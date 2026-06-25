@@ -86,7 +86,7 @@ def get_or_create_device_id():
             pass
     return device_id
 
-FIRMWARE_VERSION = "0.1.2"
+FIRMWARE_VERSION = "0.1.3"
 
 # Default server URLs (will be overridden by mDNS if discovered)
 api_url = wifi_cfg.get("api_url", "https://picframes.treee.house/api/wakeup")
@@ -706,6 +706,49 @@ if boot_pressed_on_boot:
 if key_pressed_on_boot:
     advance_next_image()
 
+def disconnect_wifi_and_refresh(target_image):
+    if wlan.isconnected():
+        print("Disconnecting Wi-Fi to prevent power brownout during refresh...")
+        wlan.active(False)
+    
+    bat_pct = None
+    try:
+        from axp import AXP2101
+        axp_pmic = AXP2101()
+        bat_pct = axp_pmic.get_battery_percentage()
+        print("Current battery percentage:", bat_pct)
+    except Exception as e:
+        print("Failed to read battery percentage during refresh:", e)
+        
+    try:
+        epd = EPD_7in3f()
+        print("Writing to display:", target_image)
+        epd.display_file("/sd/" + target_image, battery_level=bat_pct)
+        print("Display updated successfully.")
+        try:
+            with open('/sd/current_image.txt', 'w') as f:
+                f.write(target_image)
+        except Exception as e:
+            print("Failed to save current_image.txt:", e)
+    except Exception as e:
+        print("Display refresh failed:", e)
+
+# Check for critically low battery on bootup (if on battery)
+if not is_usb_connected():
+    try:
+        from axp import AXP2101
+        axp_pmic = AXP2101()
+        bat_pct = axp_pmic.get_battery_percentage()
+        print("Boot-time battery check percentage:", bat_pct)
+        if bat_pct <= 10:
+            print("Battery critically low ({}%). Entering shutdown deep sleep...".format(bat_pct))
+            msg = "Battery critically low ({}%). Please connect power supply to charge the device.".format(bat_pct)
+            create_warning_image(msg, "/sd/no_images.bin")
+            disconnect_wifi_and_refresh("no_images.bin")
+            go_to_sleep(3600 * 24)
+    except Exception as e:
+        print("Failed to perform boot battery check:", e)
+
 # Discover central server via mDNS if Wi-Fi connected
 if wlan.isconnected():
     discovered_server = discover_server_mdns()
@@ -720,23 +763,6 @@ else:
 
 poll_interval = 15
 device_id = wifi_cfg.get("device_id", "picframe_node")
-
-def disconnect_wifi_and_refresh(target_image):
-    if wlan.isconnected():
-        print("Disconnecting Wi-Fi to prevent power brownout during refresh...")
-        wlan.active(False)
-    try:
-        epd = EPD_7in3f()
-        print("Writing to display:", target_image)
-        epd.display_file("/sd/" + target_image)
-        print("Display updated successfully.")
-        try:
-            with open('/sd/current_image.txt', 'w') as f:
-                f.write(target_image)
-        except Exception as e:
-            print("Failed to save current_image.txt:", e)
-    except Exception as e:
-        print("Display refresh failed:", e)
 
 print("Polling server at:", api_url)
 

@@ -54,3 +54,16 @@ class AXP2101:
         except Exception as e:
             print("AXP2101 is_usb_connected error:", e)
             return True # safe fallback to assume plugged in
+
+    def get_battery_percentage(self):
+        try:
+            val = self.read_reg(0xA4)
+            if val > 100:
+                if self.is_usb_connected():
+                    return 100
+                return 0
+            return val
+        except Exception as e:
+            print("AXP2101 read battery percentage error:", e)
+            return 100
+

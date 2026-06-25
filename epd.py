@@ -120,11 +120,60 @@ class EPD_7in3f:
         self.send_data(0x00)
         self.read_busy()
 
-    def display_file(self, filepath):
+    def draw_battery_pixel(self, x, y, percent, original_color):
+        # Margin box to clear background: x from 738 to 785, y from 458 to 474
+        if not (458 <= y <= 474 and 738 <= x <= 785):
+            return original_color
+            
+        # Inside the margin but outside the battery body
+        is_body = (460 <= y <= 472 and 740 <= x <= 780)
+        is_tip = (463 <= y <= 469 and 780 <= x <= 782)
+        
+        if not (is_body or is_tip):
+            return 1  # white margin
+            
+        # Draw outer outline
+        if is_body:
+            if y == 460 or y == 472 or x == 740:
+                return 0  # black border
+            if x == 780 and (y < 463 or y > 469):
+                return 0  # black border
+                
+        if is_tip:
+            if y == 463 or y == 469 or x == 782:
+                return 0  # black border
+                
+        # Inside the battery tip (nub) - make it white
+        if is_tip:
+            return 1
+            
+        # Inside the battery body (461 <= y <= 471, 741 <= x <= 779)
+        # Determine segment color
+        if percent >= 40:
+            color = 6  # Green
+            num_bars = 5 if percent >= 80 else (4 if percent >= 60 else 3)
+        elif percent >= 20:
+            color = 2  # Yellow
+            num_bars = 2
+        else:
+            color = 3  # Red
+            num_bars = 1
+            
+        # Define segments
+        if 463 <= y <= 469:
+            if 743 <= x <= 748 and num_bars >= 1: return color
+            if 750 <= x <= 755 and num_bars >= 2: return color
+            if 757 <= x <= 762 and num_bars >= 3: return color
+            if 764 <= x <= 769 and num_bars >= 4: return color
+            if 771 <= x <= 776 and num_bars >= 5: return color
+            
+        return 1  # White background inside battery
+
+    def display_file(self, filepath, battery_level=None):
         """
         Streams 192,000 bytes 4bpp RAW display bitstream file directly 
         from the SD card to the panel over SPI in 4KB chunks.
-        Keeps CS low during the entire transmission to match physical timing.
+        Overlays a battery indicator in the bottom-right corner if battery_level is provided.
         """
         self.init()
         self.send_command(0x10) # Write RAM command
@@ -133,16 +182,48 @@ class EPD_7in3f:
         self.cs.value(0)
         
         chunk = bytearray(4096)
+        byte_index = 0
+        
+        # Only overlay if battery_level is provided and it is a normal image
+        is_warning = "no_images.bin" in filepath or "warning" in filepath
+        should_overlay = (battery_level is not None) and (not is_warning)
+        
         with open(filepath, 'rb') as f:
             while True:
                 n = f.readinto(chunk)
                 if not n:
                     break
+                    
+                if should_overlay:
+                    # Modify pixels in this chunk
+                    for i in range(n):
+                        curr_byte_pos = byte_index + i
+                        y = curr_byte_pos // 400
+                        
+                        # Only check if we are in the battery indicator vertical range
+                        if 458 <= y <= 474:
+                            x_byte = curr_byte_pos % 400
+                            x_even = x_byte * 2
+                            x_odd = x_even + 1
+                            
+                            # Check if the horizontal range also intersects our area
+                            if 738 <= x_even <= 785 or 738 <= x_odd <= 785:
+                                b = chunk[i]
+                                col_even = (b >> 4) & 0x0F
+                                col_odd = b & 0x0F
+                                
+                                new_even = self.draw_battery_pixel(x_even, y, battery_level, col_even)
+                                new_odd = self.draw_battery_pixel(x_odd, y, battery_level, col_odd)
+                                
+                                chunk[i] = (new_even << 4) | new_odd
+                                
                 if n == len(chunk):
                     self.spi.write(chunk)
                 else:
                     self.spi.write(memoryview(chunk)[:n])
                     
+                byte_index += n
+                
         self.cs.value(1)
         self.turn_on_display()
         
