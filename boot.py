@@ -218,6 +218,30 @@ def start_ap_portal():
         time.sleep_ms(500)
         machine.reset()
 
+# 2. Connect to Wi-Fi network
+wlan = network.WLAN(network.STA_IF)
+wlan.active(True)
+
+wifi_config = {}
+if sd_mounted:
+    try:
+        with open('/sd/wifi_config.json', 'r') as f:
+            wifi_config = json.load(f)
+            print("Loaded Wi-Fi config from SD card.")
+    except Exception:
+        pass
+
+if not wifi_config:
+    try:
+        with open('wifi_config.json', 'r') as f:
+            wifi_config = json.load(f)
+            print("Loaded Wi-Fi config from Flash.")
+    except Exception:
+        pass
+
+ssid = wifi_config.get("ssid", "")
+password = wifi_config.get("password", "")
+
 # Ensure device ID is set
 device_id = get_or_create_device_id(wifi_config)
 

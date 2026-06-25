@@ -121,38 +121,41 @@ class EPD_7in3f:
         self.read_busy()
 
     def draw_battery_pixel(self, x, y, percent, original_color):
-        # Margin box to clear background: x from 738 to 785, y from 458 to 474
-        if not (458 <= y <= 474 and 738 <= x <= 785):
+        # Margin box to clear background: x from 670 to 790, y from 420 to 475
+        if not (420 <= y <= 475 and 670 <= x <= 790):
             return original_color
             
-        # Inside the margin but outside the battery body
-        is_body = (460 <= y <= 472 and 740 <= x <= 780)
-        is_tip = (463 <= y <= 469 and 780 <= x <= 782)
+        # Inside the margin but outside the battery body/tip
+        is_body = (430 <= y <= 466 and 680 <= x <= 770)
+        is_tip = (442 <= y <= 454 and 770 <= x <= 775)
         
         if not (is_body or is_tip):
             return 1  # white margin
             
         # Draw outer outline
         if is_body:
-            if y == 460 or y == 472 or x == 740:
+            if y == 430 or y == 466 or x == 680:
                 return 0  # black border
-            if x == 780 and (y < 463 or y > 469):
+            if x == 770 and (y < 442 or y > 454):
                 return 0  # black border
                 
         if is_tip:
-            if y == 463 or y == 469 or x == 782:
+            if y == 442 or y == 454 or x == 775:
                 return 0  # black border
                 
         # Inside the battery tip (nub) - make it white
         if is_tip:
             return 1
             
-        # Inside the battery body (461 <= y <= 471, 741 <= x <= 779)
+        # Inside the battery body (431 <= y <= 465, 681 <= x <= 769)
+        # Fallback if percent is None
+        val_percent = percent if percent is not None else 50
+        
         # Determine segment color
-        if percent >= 40:
+        if val_percent >= 40:
             color = 6  # Green
-            num_bars = 5 if percent >= 80 else (4 if percent >= 60 else 3)
-        elif percent >= 20:
+            num_bars = 5 if val_percent >= 80 else (4 if val_percent >= 60 else 3)
+        elif val_percent >= 20:
             color = 2  # Yellow
             num_bars = 2
         else:
@@ -160,12 +163,12 @@ class EPD_7in3f:
             num_bars = 1
             
         # Define segments
-        if 463 <= y <= 469:
-            if 743 <= x <= 748 and num_bars >= 1: return color
-            if 750 <= x <= 755 and num_bars >= 2: return color
-            if 757 <= x <= 762 and num_bars >= 3: return color
-            if 764 <= x <= 769 and num_bars >= 4: return color
-            if 771 <= x <= 776 and num_bars >= 5: return color
+        if 434 <= y <= 462:
+            if 684 <= x <= 697 and num_bars >= 1: return color
+            if 701 <= x <= 714 and num_bars >= 2: return color
+            if 718 <= x <= 731 and num_bars >= 3: return color
+            if 735 <= x <= 748 and num_bars >= 4: return color
+            if 752 <= x <= 765 and num_bars >= 5: return color
             
         return 1  # White background inside battery
 
@@ -173,7 +176,7 @@ class EPD_7in3f:
         """
         Streams 192,000 bytes 4bpp RAW display bitstream file directly 
         from the SD card to the panel over SPI in 4KB chunks.
-        Overlays a battery indicator in the bottom-right corner if battery_level is provided.
+        Overlays a battery indicator in the bottom-right corner.
         """
         self.init()
         self.send_command(0x10) # Write RAM command
@@ -184,9 +187,9 @@ class EPD_7in3f:
         chunk = bytearray(4096)
         byte_index = 0
         
-        # Only overlay if battery_level is provided and it is a normal image
+        # Only overlay on normal images (not warnings)
         is_warning = "no_images.bin" in filepath or "warning" in filepath
-        should_overlay = (battery_level is not None) and (not is_warning)
+        should_overlay = not is_warning
         
         with open(filepath, 'rb') as f:
             while True:
@@ -201,13 +204,13 @@ class EPD_7in3f:
                         y = curr_byte_pos // 400
                         
                         # Only check if we are in the battery indicator vertical range
-                        if 458 <= y <= 474:
+                        if 420 <= y <= 475:
                             x_byte = curr_byte_pos % 400
                             x_even = x_byte * 2
                             x_odd = x_even + 1
                             
                             # Check if the horizontal range also intersects our area
-                            if 738 <= x_even <= 785 or 738 <= x_odd <= 785:
+                            if 670 <= x_even <= 790 or 670 <= x_odd <= 790:
                                 b = chunk[i]
                                 col_even = (b >> 4) & 0x0F
                                 col_odd = b & 0x0F

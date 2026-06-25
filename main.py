@@ -86,7 +86,7 @@ def get_or_create_device_id():
             pass
     return device_id
 
-FIRMWARE_VERSION = "0.1.3"
+FIRMWARE_VERSION = "0.1.4"
 
 # Default server URLs (will be overridden by mDNS if discovered)
 api_url = wifi_cfg.get("api_url", "https://picframes.treee.house/api/wakeup")

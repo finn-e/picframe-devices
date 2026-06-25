@@ -1,15 +1,27 @@
 import machine
 import time
 
+_shared_i2c = None
+
 class AXP2101:
     def __init__(self, sda=47, scl=48, addr=0x34):
-        self.i2c = machine.SoftI2C(sda=machine.Pin(sda), scl=machine.Pin(scl))
+        global _shared_i2c
+        if _shared_i2c is None:
+            try:
+                _shared_i2c = machine.SoftI2C(sda=machine.Pin(sda), scl=machine.Pin(scl))
+            except Exception as e:
+                print("AXP2101 SoftI2C init failed:", e)
+        self.i2c = _shared_i2c
         self.addr = addr
 
     def write_reg(self, reg, val):
+        if self.i2c is None:
+            raise OSError("I2C not initialized")
         self.i2c.writeto_mem(self.addr, reg, bytes([val]))
 
     def read_reg(self, reg):
+        if self.i2c is None:
+            raise OSError("I2C not initialized")
         return self.i2c.readfrom_mem(self.addr, reg, 1)[0]
 
     def set_bit(self, reg, bit):
