@@ -45,3 +45,12 @@ class AXP2101:
         # Disable all rails except DC1 (which powers the ESP32) to conserve energy
         val = self.read_reg(0x90)
         self.write_reg(0x90, val & ~0x0E) # Clear bits 1 (ALDO2), 2 (ALDO3), 3 (ALDO4)
+
+    def is_usb_connected(self):
+        try:
+            reg00 = self.read_reg(0x00)
+            # Bit 5: VBUS_GOOD, Bit 4: VBUS_PRESENT
+            return (reg00 & 0x20) != 0 or (reg00 & 0x10) != 0
+        except Exception as e:
+            print("AXP2101 is_usb_connected error:", e)
+            return True # safe fallback to assume plugged in

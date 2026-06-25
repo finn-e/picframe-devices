@@ -55,14 +55,44 @@ def re_url_decode(s):
             i += 1
     return "".join(res)
 
+def get_or_create_device_id(config):
+    device_id = config.get("device_id")
+    if not device_id or len(device_id) != 8:
+        import urandom
+        import ubinascii
+        b = bytes([urandom.getrandbits(8) for _ in range(4)])
+        device_id = ubinascii.hexlify(b).decode()
+        config["device_id"] = device_id
+        if sd_mounted:
+            try:
+                with open('/sd/wifi_config.json', 'w') as f:
+                    json.dump(config, f)
+            except Exception:
+                pass
+        try:
+            with open('wifi_config.json', 'w') as f:
+                json.dump(config, f)
+        except Exception:
+            pass
+    return device_id
+
+def is_usb_connected():
+    try:
+        from axp import AXP2101
+        axp_pmic = AXP2101()
+        return axp_pmic.is_usb_connected()
+    except Exception as e:
+        print("Failed to read VBUS from PMIC in boot:", e)
+        return True
+
 def start_ap_portal():
     print("Starting Setup Access Point Portal...")
     import ubinascii
     wlan_sta = network.WLAN(network.STA_IF)
     wlan_sta.active(True)
-    mac_bytes = wlan_sta.config('mac')
-    mac_str = ubinascii.hexlify(mac_bytes).decode()
-    ap_ssid = "PicFrame-" + mac_str[-6:].upper()
+    
+    device_id = get_or_create_device_id(wifi_config)
+    ap_ssid = "PicFrame - " + device_id
     
     ap = network.WLAN(network.AP_IF)
     ap.active(True)
@@ -77,6 +107,9 @@ def start_ap_portal():
     s.bind(('', 80))
     s.listen(1)
     s.settimeout(2.0)
+    
+    mac_bytes = wlan_sta.config('mac')
+    mac_str = ubinascii.hexlify(mac_bytes, ':').decode()
     
     html = """<!DOCTYPE html>
 <html>
@@ -95,6 +128,7 @@ def start_ap_portal():
 <body>
     <div class="card">
         <h2>📷 PicFrame Wi-Fi Config</h2>
+        <p style="font-family: monospace; font-size: 0.9rem; color: #38bdf8;">Device ID: {}</p>
         <p style="font-family: monospace; font-size: 0.9rem; color: #38bdf8;">MAC: {}</p>
         <p>Enter the credentials to connect your frame to your local Wi-Fi:</p>
         <form method="POST" action="/save">
@@ -106,7 +140,7 @@ def start_ap_portal():
         </form>
     </div>
 </body>
-</html>""".format(ubinascii.hexlify(mac_bytes, ':').decode().upper())
+</html>""".format(device_id.upper(), mac_str.upper())
 
     start_time = time.time()
     portal_timeout = 180 # 3 minutes
@@ -132,7 +166,21 @@ def start_ap_portal():
                 password = params.get("password")
                 
                 if ssid:
-                    wifi_config = {"ssid": ssid, "password": password or ""}
+                    print("Testing Wi-Fi connection to:", ssid)
+                    wlan_sta.active(True)
+                    wlan_sta.connect(ssid, password or "")
+                    
+                    connect_success = False
+                    test_start = time.time()
+                    while time.time() - test_start < 10:
+                        if wlan_sta.isconnected():
+                            connect_success = True
+                            break
+                        time.sleep_ms(100)
+                        
+                    # Always save credentials and reboot (as per A3 logic)
+                    wifi_config["ssid"] = ssid
+                    wifi_config["password"] = password or ""
                     if sd_mounted:
                         try:
                             with open('/sd/wifi_config.json', 'w') as f:
@@ -145,8 +193,14 @@ def start_ap_portal():
                     except Exception:
                         pass
                         
-                    conn.send("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n")
-                    conn.send("<html><body><h3>Settings saved successfully! Rebooting...</h3></body></html>")
+                    if connect_success:
+                        print("Connection successful! Saving credentials and rebooting...")
+                        conn.send("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n")
+                        conn.send("<html><body><h3>Connection successful! Config saved. Rebooting...</h3></body></html>")
+                    else:
+                        print("Connection test failed. Saving and rebooting to retry connection...")
+                        conn.send("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n")
+                        conn.send("<html><body><h3>Connection test failed, but credentials saved. Rebooting to retry connection...</h3></body></html>")
                     conn.close()
                     config_saved = True
                     break
@@ -164,35 +218,21 @@ def start_ap_portal():
         time.sleep_ms(500)
         machine.reset()
 
-# 2. Connect to Wi-Fi network
-wlan = network.WLAN(network.STA_IF)
-wlan.active(True)
+# Ensure device ID is set
+device_id = get_or_create_device_id(wifi_config)
 
-wifi_config = {}
-if sd_mounted:
-    try:
-        with open('/sd/wifi_config.json', 'r') as f:
-            wifi_config = json.load(f)
-            print("Loaded Wi-Fi config from SD card.")
-    except Exception:
-        pass
-
-if not wifi_config:
-    try:
-        with open('wifi_config.json', 'r') as f:
-            wifi_config = json.load(f)
-            print("Loaded Wi-Fi config from Flash.")
-    except Exception:
-        pass
-
-ssid = wifi_config.get("ssid", "")
-password = wifi_config.get("password", "")
-
-# If boot button was held or we have no Wi-Fi credentials, start the AP setup portal
-if force_ap or not ssid:
+if force_ap:
+    # Explicitly forced AP portal via button hold
     start_ap_portal()
-
-if ssid:
+elif not ssid:
+    # No credentials at all
+    if is_usb_connected():
+        print("No Wi-Fi credentials and USB connected. Starting AP Portal...")
+        start_ap_portal()
+    else:
+        print("No Wi-Fi credentials and on battery. Skipping AP Portal to save power, proceeding to main.py.")
+else:
+    # We have credentials, try connecting
     print("Connecting to Wi-Fi:", ssid)
     wlan.connect(ssid, password)
     
@@ -206,7 +246,4 @@ if ssid:
     if wlan.isconnected():
         print("Connected! Network Config:", wlan.ifconfig())
     else:
-        print("Could not connect. Skipping AP Portal to allow offline playback fallback.")
-else:
-    print("No Wi-Fi credentials. Starting AP Portal.")
-    start_ap_portal()
+        print("Could not connect. Skipping AP Portal to allow offline/power-saving fallback in main.py.")
