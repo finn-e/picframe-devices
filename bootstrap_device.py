@@ -100,25 +100,57 @@ def flash_firmware(port):
         print(f"Write flash failed: {e}")
         sys.exit(1)
 
-def deploy_minimal_loader(port):
+def deploy_files(port):
     print("\n==================================================")
-    print("Step 4: Deploying Minimal Loader to Flash")
+    print("Step 4: Deploying Files to Flash")
     print("==================================================")
     print("Waiting 5s for MicroPython filesystem initialization...")
     time.sleep(5.0)
     
-    files_to_copy = [
-        ("minimal-loader/boot.py", ":boot.py"),
-        ("minimal-loader/main.py", ":main.py"),
-        ("minimal-loader/axp.py", ":axp.py"),
-        ("minimal-loader/unzip.py", ":unzip.py")
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    full_app_dirs = [
+        script_dir,
+        os.path.join(script_dir, "..", "picframe-waveshare-ESP32-S3-PhotoPainter"),
+        os.path.join(script_dir, "picframe-waveshare-ESP32-S3-PhotoPainter")
     ]
     
+    source_dir = None
+    for d in full_app_dirs:
+        if os.path.exists(os.path.join(d, "epd.py")) and os.path.exists(os.path.join(d, "main.py")):
+            source_dir = d
+            break
+            
+    files_to_copy = []
+    if source_dir:
+        print(f"Detected full application files in: {source_dir}")
+        files_to_copy = [
+            (os.path.join(source_dir, "boot.py"), ":boot.py"),
+            (os.path.join(source_dir, "main.py"), ":main.py"),
+            (os.path.join(source_dir, "axp.py"), ":axp.py"),
+            (os.path.join(source_dir, "epd.py"), ":epd.py"),
+            (os.path.join(source_dir, "unzip.py"), ":unzip.py")
+        ]
+    else:
+        minimal_dir = os.path.join(script_dir, "minimal-loader")
+        if not os.path.exists(minimal_dir):
+            minimal_dir = os.path.join(script_dir, "..", "hardware-debugging", "minimal-loader")
+            
+        print(f"Full application files not found. Falling back to minimal loader in: {minimal_dir}")
+        files_to_copy = [
+            (os.path.join(minimal_dir, "boot.py"), ":boot.py"),
+            (os.path.join(minimal_dir, "main.py"), ":main.py"),
+            (os.path.join(minimal_dir, "axp.py"), ":axp.py"),
+            (os.path.join(minimal_dir, "unzip.py"), ":unzip.py")
+        ]
+        
     for src, dst in files_to_copy:
-        print(f"Deploying {src} -> {dst}...")
+        if not os.path.exists(src):
+            print(f"Warning: Source file {src} does not exist. Skipping.")
+            continue
+            
+        print(f"Deploying {os.path.basename(src)} -> {dst}...")
         cp_cmd = ["./venv/bin/mpremote", "connect", port, "fs", "cp", src, dst]
         
-        # Retry logic for filesystem availability
         success = False
         for attempt in range(3):
             try:
@@ -127,7 +159,7 @@ def deploy_minimal_loader(port):
                 break
             except subprocess.CalledProcessError:
                 time.sleep(1.0)
-        
+                
         if not success:
             print(f"Error: Failed to copy {src} to internal Flash.")
             sys.exit(1)
@@ -140,7 +172,7 @@ def deploy_minimal_loader(port):
     reboot_cmd = ["./venv/bin/mpremote", "connect", port, "soft-reset"]
     try:
         subprocess.run(reboot_cmd, check=True, stdout=subprocess.DEVNULL)
-        print("Reset triggered successfully. Minimal loader is now running!")
+        print("Reset triggered successfully. System is now running!")
     except subprocess.CalledProcessError:
         print("Failed to trigger soft-reset. Please press the physical RESET button on the board.")
 
@@ -148,5 +180,5 @@ if __name__ == "__main__":
     download_latest_firmware()
     port = detect_device_port()
     flash_firmware(port)
-    deploy_minimal_loader(port)
+    deploy_files(port)
     print("\nAll tasks completed successfully!")

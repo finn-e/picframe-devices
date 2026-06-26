@@ -86,7 +86,7 @@ def get_or_create_device_id():
             pass
     return device_id
 
-FIRMWARE_VERSION = "0.1.4"
+FIRMWARE_VERSION = "0.1.5"
 
 # Default server URLs (will be overridden by mDNS if discovered)
 api_url = wifi_cfg.get("api_url", "https://picframes.treee.house/api/wakeup")
@@ -323,7 +323,7 @@ def create_warning_image(message, filepath):
         print("Failed to create warning image:", e)
         return False
 
-def start_ap_portal(timeout_seconds):
+def start_ap_portal(timeout_seconds, require_server_ip=False):
     device_id = get_or_create_device_id()
     ap_ssid = "PicFrame - " + device_id
     print("Starting Setup Access Point Portal: SSID = '{}'".format(ap_ssid))
@@ -345,37 +345,62 @@ def start_ap_portal(timeout_seconds):
     import ubinascii
     mac_str_clean = ubinascii.hexlify(mac_bytes, ':').decode()
     
-    html = """<!DOCTYPE html>
+    html_template = """<!DOCTYPE html>
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>PicFrame Wi-Fi Setup</title>
     <style>
-        body { font-family: sans-serif; background: #0f172a; color: #f1f3f9; padding: 20px; }
-        h2 { color: #38bdf8; }
-        .card { background: #1e293b; padding: 20px; border-radius: 12px; max-width: 400px; margin: 0 auto; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
-        input[type=text], input[type=password] { width: 100%; padding: 10px; margin: 10px 0; box-sizing: border-box; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 6px; }
-        input[type=submit] { background: #0ea5e9; color: white; border: none; padding: 12px; width: 100%; border-radius: 6px; font-weight: bold; cursor: pointer; }
-        input[type=submit]:hover { background: #0284c7; }
+        body {{ font-family: sans-serif; background: #0f172a; color: #f1f3f9; padding: 20px; }}
+        h2 {{ color: #38bdf8; }}
+        .card {{ background: #1e293b; padding: 20px; border-radius: 12px; max-width: 400px; margin: 0 auto; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }}
+        input[type=text], input[type=password] {{ width: 100%; padding: 10px; margin: 10px 0; box-sizing: border-box; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 6px; }}
+        input[type=submit] {{ background: #0ea5e9; color: white; border: none; padding: 12px; width: 100%; border-radius: 6px; font-weight: bold; cursor: pointer; }}
+        input[type=submit]:hover {{ background: #0284c7; }}
+        .error {{ color: #ef4444; background: #450a0a; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 0.9rem; }}
     </style>
 </head>
 <body>
     <div class="card">
         <h2>📷 PicFrame Wi-Fi Config</h2>
-        <p style="font-family: monospace; font-size: 0.9rem; color: #38bdf8;">Device ID: {}</p>
-        <p style="font-family: monospace; font-size: 0.9rem; color: #38bdf8;">MAC: {}</p>
-        <p>Enter the credentials to connect your frame to your local Wi-Fi:</p>
+        <p style="font-family: monospace; font-size: 0.9rem; color: #38bdf8;">Device ID: {dev_id}</p>
+        <p style="font-family: monospace; font-size: 0.9rem; color: #38bdf8;">MAC: {mac}</p>
+        {error_msg}
         <form method="POST" action="/save">
             <label>SSID (Network Name):</label>
-            <input type="text" name="ssid" placeholder="MyHomeWiFi" required>
+            <input type="text" name="ssid" value="{ssid}" placeholder="MyHomeWiFi" required>
             <label>Password:</label>
-            <input type="password" name="password" placeholder="••••••••" required>
+            <input type="password" name="password" value="{password}" placeholder="••••••••">
+            <label>PicFrames Server IP/DNS {req_label}:</label>
+            <input type="text" name="server_ip" value="{server_ip}" {req_attr} placeholder="192.168.1.100:8000">
             <input type="submit" value="Save & Connect">
         </form>
     </div>
 </body>
-</html>""".format(device_id.upper(), mac_str_clean.upper())
+</html>"""
 
+    error_msg = ""
+    if require_server_ip:
+        error_msg = '<div class="error">Connected to Wi-Fi but could not discover the PicFrames server via mDNS. Server IP/DNS is required.</div>'
+        
+    req_label = "(Required)" if require_server_ip else "(Optional)"
+    req_attr = "required" if require_server_ip else ""
+    
+    ssid_val = wifi_cfg.get("ssid", "")
+    password_val = wifi_cfg.get("password", "")
+    server_ip_val = wifi_cfg.get("server_ip", "")
+    
+    html = html_template.format(
+        dev_id=device_id.upper(),
+        mac=mac_str_clean.upper(),
+        error_msg=error_msg,
+        ssid=ssid_val,
+        password=password_val,
+        server_ip=server_ip_val,
+        req_label=req_label,
+        req_attr=req_attr
+    )
+    
     start_time = time.time()
     config_saved = False
     
@@ -405,14 +430,14 @@ def start_ap_portal(timeout_seconds):
                         k, v = param.split("=")
                         params[k] = re_url_decode(v)
                         
-                ssid = params.get("ssid")
-                password = params.get("password")
+                ssid = params.get("ssid", "").strip()
+                password = params.get("password", "").strip()
+                server_ip = params.get("server_ip", "").strip()
                 
                 if ssid:
                     print("Testing Wi-Fi connection to:", ssid)
-                    # Attempt connection on STA interface
                     wlan.active(True)
-                    wlan.connect(ssid, password or "")
+                    wlan.connect(ssid, password)
                     
                     connect_success = False
                     test_start = time.time()
@@ -422,9 +447,28 @@ def start_ap_portal(timeout_seconds):
                             break
                         time.sleep_ms(100)
                         
-                    # Always save credentials and reboot (as per A3 logic)
+                    # Always save credentials and reboot
                     wifi_cfg["ssid"] = ssid
-                    wifi_cfg["password"] = password or ""
+                    wifi_cfg["password"] = password
+                    wifi_cfg["server_ip"] = server_ip
+                    wifi_cfg["require_server_ip"] = require_server_ip
+                    
+                    if server_ip:
+                        resolved_ip = server_ip
+                        resolved_port = 8000
+                        if ":" in resolved_ip:
+                            resolved_ip, port_str = resolved_ip.split(":")
+                            try: resolved_port = int(port_str)
+                            except ValueError: pass
+                        wifi_cfg["api_url"] = "http://{}:{}/api/wakeup".format(resolved_ip, resolved_port)
+                        wifi_cfg["daily_zip_url"] = "http://{}:{}/api/daily-zip".format(resolved_ip, resolved_port)
+                        wifi_cfg["update_url"] = "http://{}:{}/api/update".format(resolved_ip, resolved_port)
+                    else:
+                        # Clear old manual configs so mDNS is used
+                        wifi_cfg.pop("api_url", None)
+                        wifi_cfg.pop("daily_zip_url", None)
+                        wifi_cfg.pop("update_url", None)
+                    
                     try:
                         with open('/sd/wifi_config.json', 'w') as f:
                             json.dump(wifi_cfg, f)
@@ -461,6 +505,156 @@ def start_ap_portal(timeout_seconds):
         print("Rebooting device...")
         time.sleep_ms(500)
         machine.reset()
+
+def run_bootstrap_sequence():
+    print("Initializing bootstrap sequence...")
+    unique_id = get_or_create_device_id()
+
+    # Determine if an SD card is present (needed for warning image path choices)
+    sd_present = False
+    try:
+        os.stat("/sd")
+        sd_present = True
+    except OSError:
+        pass
+
+    # Helper: paint a message to the EPD, writing to SD or internal flash as available
+    def _bootstrap_paint(message):
+        print("Painting bootstrap message to EPD.")
+        bin_path = "/sd/no_images.bin" if sd_present else "/no_images.bin"
+        try:
+            create_warning_image(message, bin_path)
+            epd = EPD_7in3f()
+            epd.display_file(bin_path, battery_level=None)
+            try: os.remove(bin_path)
+            except Exception: pass
+        except Exception as e:
+            print("EPD paint failed:", e)
+
+    # --- Gate: require USB power for any network activity ---
+    if not is_usb_connected():
+        msg = (
+            'Initial setup required. Please connect this frame to USB power, '
+            'then connect to the "PicFrame-{}" Wi-Fi network to configure it.'.format(unique_id.upper())
+        )
+        print("On battery in bootstrap mode. Painting message and sleeping 24h.")
+        _bootstrap_paint(msg)
+        print("Entering deep sleep for 24 hours...")
+        machine.deepsleep(24 * 3600 * 1000)
+        return  # unreachable
+
+    # USB is connected — proceed with network bootstrap
+    global wifi_cfg
+    ssid = wifi_cfg.get("ssid", "")
+    password = wifi_cfg.get("password", "")
+    server_ip = wifi_cfg.get("server_ip", "")
+    require_ip = wifi_cfg.get("require_server_ip", False)
+
+    wlan.active(True)
+    connected = False
+    if ssid:
+        print("Connecting to Wi-Fi:", ssid)
+        wlan.connect(ssid, password)
+        t_start = time.time()
+        while not wlan.isconnected() and time.time() - t_start < 10:
+            time.sleep_ms(100)
+        connected = wlan.isconnected()
+
+    resolved_ip = None
+    resolved_port = 8000
+
+    if connected:
+        print("Connected to Wi-Fi successfully!")
+        if server_ip:
+            print("Using manual server IP:", server_ip)
+            resolved_ip = server_ip
+            if ":" in resolved_ip:
+                resolved_ip, port_str = resolved_ip.split(":")
+                try: resolved_port = int(port_str)
+                except ValueError: pass
+        else:
+            discovered = discover_server_mdns()
+            if discovered:
+                print("Discovered server:", discovered)
+                host_port = discovered.split("//")[-1]
+                resolved_ip = host_port
+                if ":" in host_port:
+                    resolved_ip, port_str = host_port.split(":")
+                    try: resolved_port = int(port_str)
+                    except ValueError: pass
+            else:
+                print("mDNS discovery failed.")
+                require_ip = True
+
+    if resolved_ip:
+        bs_update_url = "http://{}:{}/api/update".format(resolved_ip, resolved_port)
+        print("Downloading firmware update from:", bs_update_url)
+        try:
+            import urequests as requests
+            res = requests.get(bs_update_url, timeout=15)
+            if res.status_code == 200:
+                zip_path = "/sd/update.zip" if sd_present else "update.zip"
+                with open(zip_path, 'wb') as f:
+                    chunk = bytearray(1024)
+                    while True:
+                        n = res.raw.readinto(chunk)
+                        if not n: break
+                        f.write(chunk if n == len(chunk) else chunk[:n])
+                res.close()
+                print("Downloaded update.zip. Extracting...")
+
+                target_dir = "/sd" if sd_present else ""
+                extract_zip(zip_path, target_dir)
+                os.remove(zip_path)
+                print("Firmware extracted.")
+
+                mac_bytes = wlan.config('mac')
+                import ubinascii
+                dev_id = ubinascii.hexlify(mac_bytes[-4:]).decode()
+
+                wifi_config_new = {
+                    "ssid": ssid,
+                    "password": password,
+                    "device_id": dev_id,
+                    "api_url": "http://{}:{}/api/wakeup".format(resolved_ip, resolved_port),
+                    "daily_zip_url": "http://{}:{}/api/daily-zip".format(resolved_ip, resolved_port),
+                    "update_url": "http://{}:{}/api/update".format(resolved_ip, resolved_port),
+                    "orientation": "landscape",
+                    "server_ip": resolved_ip + (":" + str(resolved_port) if resolved_port != 80 else "")
+                }
+
+                cfg_path = "/sd/wifi_config.json" if sd_present else "wifi_config.json"
+                with open(cfg_path, 'w') as f:
+                    json.dump(wifi_config_new, f)
+                print("Saved wifi_config.json.")
+
+                print("Bootstrap complete. Rebooting device...")
+                time.sleep(1.0)
+                machine.reset()
+            else:
+                print("Server error:", res.status_code)
+                res.close()
+                require_ip = True
+        except Exception as e:
+            print("Download failed:", e)
+            require_ip = True
+
+    # Paint a portal instruction screen before launching the AP (so the display shows
+    # instructions while the user connects via their phone/computer)
+    if require_ip:
+        portal_msg = (
+            'Could not find PicFrames server automatically. '
+            'Connect to "PicFrame-{}" Wi-Fi, then open 192.168.4.1 '
+            'and enter Wi-Fi credentials AND the server IP address.'.format(unique_id.upper())
+        )
+    else:
+        portal_msg = (
+            'Connect to "PicFrame-{}" Wi-Fi on your phone or computer, '
+            'then open 192.168.4.1 in your browser to configure this frame.'.format(unique_id.upper())
+        )
+    _bootstrap_paint(portal_msg)
+
+    start_ap_portal(sleep_time, require_server_ip=require_ip)
 
 def display_offline_image_once():
     current_orient = wifi_cfg.get('orientation', 'landscape')
@@ -551,8 +745,8 @@ def handle_connection_failure():
     if is_usb_connected():
         print("Connection failed and USB power detected. Running AP Portal loop...")
         display_offline_image_once()
-        # Keep AP portal open for sleep_time
-        start_ap_portal(sleep_time)
+        # Keep AP portal open for sleep_time. Require server IP if Wi-Fi is connected but server is unreachable
+        start_ap_portal(sleep_time, require_server_ip=wlan.isconnected())
         print("AP Portal finished. Attempting to reconnect to settings Wi-Fi...")
         wlan.active(True)
         ssid = wifi_cfg.get("ssid", "")
@@ -749,6 +943,20 @@ if not is_usb_connected():
     except Exception as e:
         print("Failed to perform boot battery check:", e)
 
+# Check if running as bootstrap loader (if /sd/main.py is missing)
+sd_main_exists = False
+try:
+    os.stat('/sd/main.py')
+    sd_main_exists = True
+except OSError:
+    pass
+
+if not sd_main_exists:
+    print("SD card empty/missing or running from internal Flash. Initiating bootstrap loader...")
+    run_bootstrap_sequence()
+    import sys
+    sys.exit(0)
+
 # Discover central server via mDNS if Wi-Fi connected
 if wlan.isconnected():
     discovered_server = discover_server_mdns()
@@ -757,6 +965,9 @@ if wlan.isconnected():
         daily_zip_url = discovered_server + "/api/daily-zip"
         update_url = discovered_server + "/api/update"
         print("Discovered server endpoint dynamically via mDNS:", discovered_server)
+    else:
+        print("mDNS discovery failed. Handling server discovery failure.")
+        handle_connection_failure()
 else:
     print("No Wi-Fi connection. Handling connection failure.")
     handle_connection_failure()
