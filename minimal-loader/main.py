@@ -136,18 +136,93 @@ else:
         except Exception as e:
             print("Paint message failed:", e)
 
-    # --- Gate: only run network setup if USB power is present ---
-    if not _is_usb_connected():
-        mac_bytes = network.WLAN(network.STA_IF).config('mac')
-        uid = ubinascii.hexlify(mac_bytes[-4:]).decode().upper()
-        msg = (
-            'Initial setup required. Please connect this frame to USB power, '
-            'then connect to the "PicFrame-{}" Wi-Fi network to configure it.'.format(uid)
-        )
-        print("On battery in bootstrap mode. Painting message and sleeping.")
-        bin_path = '/sd/no_images.bin' if sd_mounted else '/no_images.bin'
-        _paint_message(msg, bin_path)
-        print("Entering deep sleep for 24 hours...")
+    # Also add overlay-on-bin capability for battery mode
+    def _overlay_on_bin(message, src_path, out_path):
+        try:
+            with open(src_path, 'rb') as f:
+                buf = bytearray(f.read())
+            if len(buf) != 192000:
+                return False
+            words = message.split(' ')
+            lines, cur, cur_len = [], [], 0
+            for w in words:
+                need = len(w) + (1 if cur else 0)
+                if cur_len + need <= 55: cur.append(w); cur_len += need
+                else: lines.append(' '.join(cur)); cur = [w]; cur_len = len(w)
+            if cur: lines.append(' '.join(cur))
+            char_h, char_w = 8, 6
+            total_h = len(lines) * char_h * 3
+            y_top = max(0, (480 - total_h) // 2 - 15)
+            y_bot = min(480, y_top + total_h + 30)
+            FLOCAL = {
+                ' ':(0,0,0,0,0),'A':(0x7E,0x11,0x11,0x11,0x7E),'B':(0x7F,0x49,0x49,0x49,0x36),
+                'C':(0x3E,0x41,0x41,0x41,0x22),'D':(0x7F,0x41,0x41,0x22,0x1C),
+                'E':(0x7F,0x49,0x49,0x49,0x41),'F':(0x7F,0x09,0x09,0x09,0x01),
+                'G':(0x3E,0x41,0x49,0x49,0x7A),'H':(0x7F,0x08,0x08,0x08,0x7F),
+                'I':(0x00,0x41,0x7F,0x41,0x00),'J':(0x20,0x40,0x41,0x3F,0x01),
+                'K':(0x7F,0x08,0x14,0x22,0x41),'L':(0x7F,0x40,0x40,0x40,0x40),
+                'M':(0x7F,0x02,0x0C,0x02,0x7F),'N':(0x7F,0x04,0x08,0x10,0x7F),
+                'O':(0x3E,0x41,0x41,0x41,0x3E),'P':(0x7F,0x09,0x09,0x09,0x06),
+                'Q':(0x3E,0x41,0x51,0x21,0x5E),'R':(0x7F,0x09,0x19,0x29,0x46),
+                'S':(0x46,0x49,0x49,0x49,0x31),'T':(0x01,0x01,0x7F,0x01,0x01),
+                'U':(0x3F,0x40,0x40,0x40,0x3F),'V':(0x1F,0x20,0x40,0x20,0x1F),
+                'W':(0x3F,0x40,0x38,0x40,0x3F),'X':(0x63,0x14,0x08,0x14,0x63),
+                'Y':(0x07,0x08,0x70,0x08,0x07),'Z':(0x61,0x51,0x49,0x45,0x43),
+                '0':(0x3E,0x51,0x49,0x45,0x3E),'1':(0x00,0x42,0x7F,0x40,0x00),
+                '2':(0x42,0x61,0x51,0x49,0x46),'3':(0x21,0x41,0x45,0x4B,0x31),
+                '4':(0x18,0x14,0x12,0x7F,0x10),'5':(0x27,0x45,0x45,0x45,0x39),
+                '6':(0x3C,0x4A,0x49,0x49,0x30),'7':(0x01,0x71,0x09,0x05,0x03),
+                '8':(0x36,0x49,0x49,0x49,0x36),'9':(0x06,0x49,0x49,0x29,0x1E),
+                '.':(0,0x60,0x60,0,0),',':(0,0x50,0x30,0,0),':':(0,0x24,0x24,0,0),
+                '-':(8,8,8,8,8),'/':(0x20,0x10,8,4,2),'!':(0,0,0x5F,0,0),
+                '"':(0,7,0,7,0),'(':(0,0x1C,0x22,0x41,0),')':(0,0x41,0x22,0x1C,0),
+            }
+            for y in range(y_top, y_bot):  # white band
+                for xb in range(400): buf[y * 400 + xb] = 0x11
+            def set_px(x, y, col):
+                if 0 <= x < 800 and 0 <= y < 480:
+                    idx = y * 400 + x // 2; b = buf[idx]
+                    buf[idx] = (b & 0x0F)|(col<<4) if x%2==0 else (b & 0xF0)|col
+            y_off = max(0, (480 - total_h) // 2)
+            for line in lines:
+                x_off = max(0, (800 - len(line) * 12) // 2)
+                for ch in line:
+                    g = FLOCAL.get(ch.upper(), FLOCAL[' '])
+                    for ci in range(5):
+                        cv = g[ci]
+                        for ri in range(7):
+                            if cv & (1 << ri):
+                                for dx in range(2):
+                                    for dy in range(2): set_px(x_off+ci*2+dx, y_off+ri*2+dy, 0)
+                    x_off += 12
+                y_off += char_h * 3
+            with open(out_path, 'wb') as f: f.write(buf)
+            return True
+        except Exception as e:
+            print('Overlay failed:', e); return False
+
+    def _smart_paint_then_off(message):
+        """Overlay message on random bin (or white screen), display, then power off."""
+        out = '/sd/no_images.bin' if sd_mounted else '/no_images.bin'
+        done = False
+        if sd_mounted:
+            try:
+                bins = [f for f in os.listdir('/sd')
+                        if f.endswith('.bin') and 'no_images' not in f and 'warning' not in f]
+                if bins:
+                    import urandom
+                    chosen = bins[urandom.getrandbits(8) % len(bins)]
+                    print('Overlaying on:', chosen)
+                    done = _overlay_on_bin(message, '/sd/' + chosen, out)
+            except Exception as e:
+                print('Bin list error:', e)
+        if not done:
+            _paint_message(message, out)
+        wlan.active(False)
+        try:
+            from axp import AXP2101
+            AXP2101().disable_power()
+        except Exception: pass
         machine.deepsleep(24 * 3600 * 1000)
 
 
@@ -298,11 +373,31 @@ else:
         except Exception as e:
             print("Failed to download firmware:", e)
             
-    # If we reached here, we need to stand up the AP Setup Portal.
-    # First paint a screen message so the user knows what to do.
+    # If we reached here, no server was found or download failed.
+    # Battery: overlay message on random bin, then power off. USB: launch AP portal.
     mac_bytes = wlan.config('mac')
     ap_id = ubinascii.hexlify(mac_bytes[-4:]).decode().upper()
     ap_ssid = "PicFrame - " + ap_id
+
+    if not _is_usb_connected():
+        # On battery — show message on a random bin (or white screen) then sleep
+        if ssid:
+            batt_msg = (
+                'Please plug in to configure this frame. '
+                'No PicFrames server was found on the network. '
+                'Connect USB power to reconfigure ("{}" Wi-Fi).'.format(ap_ssid)
+            )
+        else:
+            batt_msg = (
+                'Please plug in to configure this frame. '
+                'No Wi-Fi credentials configured. '
+                'Connect USB power then join "{}" Wi-Fi to set up.'.format(ap_ssid)
+            )
+        print("Battery mode: no server. Painting message and powering off.")
+        _smart_paint_then_off(batt_msg)
+        return  # unreachable after deepsleep
+
+
     if require_server_ip:
         portal_msg = (
             'Could not find PicFrames server. '

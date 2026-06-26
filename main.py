@@ -86,7 +86,7 @@ def get_or_create_device_id():
             pass
     return device_id
 
-FIRMWARE_VERSION = "0.1.5"
+FIRMWARE_VERSION = "0.1.6"
 
 # Default server URLs (will be overridden by mDNS if discovered)
 api_url = wifi_cfg.get("api_url", "https://picframes.treee.house/api/wakeup")
@@ -518,37 +518,102 @@ def run_bootstrap_sequence():
     except OSError:
         pass
 
-    # Helper: paint a message to the EPD, writing to SD or internal flash as available
-    def _bootstrap_paint(message):
-        print("Painting bootstrap message to EPD.")
-        bin_path = "/sd/no_images.bin" if sd_present else "/no_images.bin"
-        try:
-            create_warning_image(message, bin_path)
-            epd = EPD_7in3f()
-            epd.display_file(bin_path, battery_level=None)
-            try: os.remove(bin_path)
-            except Exception: pass
-        except Exception as e:
-            print("EPD paint failed:", e)
-
-    # --- Gate: require USB power for any network activity ---
-    if not is_usb_connected():
-        msg = (
-            'Initial setup required. Please connect this frame to USB power, '
-            'then connect to the "PicFrame-{}" Wi-Fi network to configure it.'.format(unique_id.upper())
-        )
-        print("On battery in bootstrap mode. Painting message and sleeping 24h.")
-        _bootstrap_paint(msg)
-        print("Entering deep sleep for 24 hours...")
-        machine.deepsleep(24 * 3600 * 1000)
-        return  # unreachable
-
-    # USB is connected — proceed with network bootstrap
     global wifi_cfg
     ssid = wifi_cfg.get("ssid", "")
     password = wifi_cfg.get("password", "")
     server_ip = wifi_cfg.get("server_ip", "")
     require_ip = wifi_cfg.get("require_server_ip", False)
+
+    # --- Helper: word-wrap a message into lines ---
+    def _wrap(message, max_chars=55):
+        words = message.split(" ")
+        lines, cur, cur_len = [], [], 0
+        for w in words:
+            need = len(w) + (1 if cur else 0)
+            if cur_len + need <= max_chars:
+                cur.append(w); cur_len += need
+            else:
+                lines.append(" ".join(cur)); cur = [w]; cur_len = len(w)
+        if cur: lines.append(" ".join(cur))
+        return lines
+
+    # --- Helper: overlay message text on an existing 192KB bin ---
+    def _overlay_on_bin(message, src_path, out_path):
+        """Read a 192KB bin, paint a white band + black text over centre, write out."""
+        try:
+            with open(src_path, 'rb') as f:
+                buf = bytearray(f.read())
+            if len(buf) != 192000:
+                return False
+            lines = _wrap(message)
+            char_h = 8
+            total_h = len(lines) * char_h * 3
+            y_bar_top = max(0, (480 - total_h) // 2 - 15)
+            y_bar_bot = min(480, y_bar_top + total_h + 30)
+            for y in range(y_bar_top, y_bar_bot):  # white band
+                for xb in range(400):
+                    buf[y * 400 + xb] = 0x11
+            def set_px(x, y, col):
+                if 0 <= x < 800 and 0 <= y < 480:
+                    idx = y * 400 + x // 2
+                    b = buf[idx]
+                    buf[idx] = (b & 0x0F) | (col << 4) if x % 2 == 0 else (b & 0xF0) | col
+            y_off = max(0, (480 - total_h) // 2)
+            for line in lines:
+                x_off = max(0, (800 - len(line) * 12) // 2)
+                for ch in line:
+                    glyph = FONT.get(ch.upper(), FONT[' '])
+                    for ci in range(5):
+                        cv = glyph[ci]
+                        for ri in range(7):
+                            if cv & (1 << ri):
+                                for dx in range(2):
+                                    for dy in range(2):
+                                        set_px(x_off + ci*2+dx, y_off + ri*2+dy, 0)
+                    x_off += 12
+                y_off += char_h * 3
+            with open(out_path, 'wb') as f:
+                f.write(buf)
+            return True
+        except Exception as e:
+            print("Overlay failed:", e)
+            return False
+
+    # --- Helper: paint using random-bin overlay, or fall back to white screen ---
+    def _paint_message_smart(message):
+        out_path = "/sd/no_images.bin" if sd_present else "/no_images.bin"
+        overlaid = False
+        if sd_present:
+            try:
+                bins = [f for f in os.listdir('/sd')
+                        if f.endswith('.bin') and 'no_images' not in f and 'warning' not in f]
+                if bins:
+                    chosen = bins[random.getrandbits(8) % len(bins)]
+                    print("Overlaying message on:", chosen)
+                    overlaid = _overlay_on_bin(message, '/sd/' + chosen, out_path)
+            except Exception as e:
+                print("Bin overlay error:", e)
+        if not overlaid:
+            create_warning_image(message, out_path)
+        try:
+            epd = EPD_7in3f()
+            epd.display_file(out_path, battery_level=None)
+            try: os.remove(out_path)
+            except Exception: pass
+        except Exception as e:
+            print("EPD paint failed:", e)
+
+    # --- Helper: white-screen paint (for USB portal instructions) ---
+    def _bootstrap_paint(message):
+        out_path = "/sd/no_images.bin" if sd_present else "/no_images.bin"
+        create_warning_image(message, out_path)
+        try:
+            epd = EPD_7in3f()
+            epd.display_file(out_path, battery_level=None)
+            try: os.remove(out_path)
+            except Exception: pass
+        except Exception as e:
+            print("EPD paint failed:", e)
 
     wlan.active(True)
     connected = False
@@ -639,21 +704,46 @@ def run_bootstrap_sequence():
             print("Download failed:", e)
             require_ip = True
 
-    # Paint a portal instruction screen before launching the AP (so the display shows
-    # instructions while the user connects via their phone/computer)
+    # --- Step 3: No server found — behaviour depends on power source ---
+    if not is_usb_connected():
+        # On battery: show message (on random bin if possible), then power off
+        if not ssid:
+            msg = (
+                'Please plug in to configure this frame. '
+                'No Wi-Fi credentials configured. '
+                'Connect USB power then access \"PicFrame-{}\" Wi-Fi to set up.'.format(unique_id.upper())
+            )
+        else:
+            msg = (
+                'Please plug in to configure this frame. '
+                'No PicFrames server was found on the network. '
+                'Connect USB power to reconfigure (\"PicFrame-{}\" Wi-Fi).'.format(unique_id.upper())
+            )
+        print("Battery mode: no server. Painting message and powering off.")
+        _paint_message_smart(msg)
+        wlan.active(False)
+        try:
+            from axp import AXP2101
+            axp_sleep = AXP2101()
+            axp_sleep.disable_power()
+        except Exception as e:
+            print("PMIC disable failed:", e)
+        machine.deepsleep(24 * 3600 * 1000)
+        return  # unreachable
+
+    # On USB: paint portal instructions then launch AP
     if require_ip:
         portal_msg = (
             'Could not find PicFrames server automatically. '
-            'Connect to "PicFrame-{}" Wi-Fi, then open 192.168.4.1 '
+            'Connect to \"PicFrame-{}\" Wi-Fi, then open 192.168.4.1 '
             'and enter Wi-Fi credentials AND the server IP address.'.format(unique_id.upper())
         )
     else:
         portal_msg = (
-            'Connect to "PicFrame-{}" Wi-Fi on your phone or computer, '
+            'Connect to \"PicFrame-{}\" Wi-Fi on your phone or computer, '
             'then open 192.168.4.1 in your browser to configure this frame.'.format(unique_id.upper())
         )
     _bootstrap_paint(portal_msg)
-
     start_ap_portal(sleep_time, require_server_ip=require_ip)
 
 def display_offline_image_once():
