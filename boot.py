@@ -83,7 +83,7 @@ def is_usb_connected():
         return axp_pmic.is_usb_connected()
     except Exception as e:
         print("Failed to read VBUS from PMIC in boot:", e)
-        return True
+        return False
 
 def start_ap_portal():
     print("Starting Setup Access Point Portal...")
@@ -117,12 +117,12 @@ def start_ap_portal():
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>PicFrame Wi-Fi Setup</title>
     <style>
-        body { font-family: sans-serif; background: #0f172a; color: #f1f3f9; padding: 20px; }
-        h2 { color: #38bdf8; }
-        .card { background: #1e293b; padding: 20px; border-radius: 12px; max-width: 400px; margin: 0 auto; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
-        input[type=text], input[type=password] { width: 100%; padding: 10px; margin: 10px 0; box-sizing: border-box; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 6px; }
-        input[type=submit] { background: #0ea5e9; color: white; border: none; padding: 12px; width: 100%; border-radius: 6px; font-weight: bold; cursor: pointer; }
-        input[type=submit]:hover { background: #0284c7; }
+        body {{ font-family: sans-serif; background: #0f172a; color: #f1f3f9; padding: 20px; }}
+        h2 {{ color: #38bdf8; }}
+        .card {{ background: #1e293b; padding: 20px; border-radius: 12px; max-width: 400px; margin: 0 auto; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }}
+        input[type=text], input[type=password] {{ width: 100%; padding: 10px; margin: 10px 0; box-sizing: border-box; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 6px; }}
+        input[type=submit] {{ background: #0ea5e9; color: white; border: none; padding: 12px; width: 100%; border-radius: 6px; font-weight: bold; cursor: pointer; }}
+        input[type=submit]:hover {{ background: #0284c7; }}
     </style>
 </head>
 <body>
