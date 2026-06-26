@@ -5,10 +5,31 @@ import sys
 import time
 import urllib.request
 import subprocess
+import shutil
 
 PORT_CANDIDATES = ['/dev/ttyACM0', '/dev/ttyACM1', '/dev/ttyUSB0', '/dev/ttyUSB1']
 DOWNLOAD_PAGE = "https://micropython.org/download/ESP32_GENERIC_S3/"
 FIRMWARE_LOCAL = "latest_micropython.bin"
+
+def find_tool(name):
+    """Find a CLI tool: check venv first, then system PATH."""
+    venv_path = os.path.join(".", "venv", "bin", name)
+    if os.path.exists(venv_path):
+        return venv_path
+    found = shutil.which(name)
+    if found:
+        return found
+    return None
+
+ESPTOOL = find_tool("esptool") or find_tool("esptool.py")
+MPREMOTE = find_tool("mpremote")
+
+if not ESPTOOL:
+    print("ERROR: esptool not found. Install with: pip install esptool")
+    sys.exit(1)
+if not MPREMOTE:
+    print("ERROR: mpremote not found. Install with: pip install mpremote")
+    sys.exit(1)
 
 def download_latest_firmware():
     print("==================================================")
@@ -77,7 +98,7 @@ def flash_firmware(port):
     
     # 1. Erase flash
     print("Erasing flash memory...")
-    erase_cmd = ["./venv/bin/esptool", "-p", port, "-b", "460800", "erase_flash"]
+    erase_cmd = [ESPTOOL, "-p", port, "-b", "115200", "erase_flash"]
     try:
         subprocess.run(erase_cmd, check=True)
         print("Flash successfully erased.")
@@ -88,7 +109,7 @@ def flash_firmware(port):
     # 2. Write firmware
     print("Writing firmware...")
     flash_cmd = [
-        "./venv/bin/esptool", "-p", port, "-b", "460800",
+        ESPTOOL, "-p", port, "-b", "115200",
         "--before", "default-reset", "--after", "hard-reset", "write-flash",
         "--flash-mode", "dio", "--flash-size", "16MB", "--flash-freq", "80m",
         "0x0", FIRMWARE_LOCAL
@@ -104,8 +125,8 @@ def deploy_files(port):
     print("\n==================================================")
     print("Step 4: Deploying Files to Flash")
     print("==================================================")
-    print("Waiting 5s for MicroPython filesystem initialization...")
-    time.sleep(5.0)
+    print("Waiting 15s for MicroPython filesystem initialization...")
+    time.sleep(15.0)
     
     script_dir = os.path.dirname(os.path.abspath(__file__))
     full_app_dirs = [
@@ -149,7 +170,7 @@ def deploy_files(port):
             continue
             
         print(f"Deploying {os.path.basename(src)} -> {dst}...")
-        cp_cmd = ["./venv/bin/mpremote", "connect", port, "fs", "cp", src, dst]
+        cp_cmd = [MPREMOTE, "connect", port, "fs", "cp", src, dst]
         
         success = False
         for attempt in range(3):
@@ -169,7 +190,7 @@ def deploy_files(port):
     print("\n==================================================")
     print("Step 5: Resetting the Device")
     print("==================================================")
-    reboot_cmd = ["./venv/bin/mpremote", "connect", port, "soft-reset"]
+    reboot_cmd = [MPREMOTE, "connect", port, "soft-reset"]
     try:
         subprocess.run(reboot_cmd, check=True, stdout=subprocess.DEVNULL)
         print("Reset triggered successfully. System is now running!")
@@ -177,8 +198,18 @@ def deploy_files(port):
         print("Failed to trigger soft-reset. Please press the physical RESET button on the board.")
 
 if __name__ == "__main__":
-    download_latest_firmware()
-    port = detect_device_port()
-    flash_firmware(port)
+    deploy_only = "--deploy-only" in sys.argv
+    args = [a for a in sys.argv[1:] if a != "--deploy-only"]
+    
+    if len(args) > 0:
+        port = args[0]
+        print(f"Using explicitly specified port: {port}")
+    else:
+        port = detect_device_port()
+        
+    if not deploy_only:
+        download_latest_firmware()
+        flash_firmware(port)
+        
     deploy_files(port)
     print("\nAll tasks completed successfully!")
