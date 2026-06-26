@@ -1,0 +1,152 @@
+#!/usr/bin/env python3
+import os
+import re
+import sys
+import time
+import urllib.request
+import subprocess
+
+PORT_CANDIDATES = ['/dev/ttyACM0', '/dev/ttyACM1', '/dev/ttyUSB0', '/dev/ttyUSB1']
+DOWNLOAD_PAGE = "https://micropython.org/download/ESP32_GENERIC_S3/"
+FIRMWARE_LOCAL = "latest_micropython.bin"
+
+def download_latest_firmware():
+    print("==================================================")
+    print("Step 1: Scraping latest MicroPython firmware URL")
+    print("==================================================")
+    try:
+        print(f"Fetching downloads page: {DOWNLOAD_PAGE}")
+        req = urllib.request.Request(
+            DOWNLOAD_PAGE, 
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        )
+        with urllib.request.urlopen(req) as response:
+            html = response.read().decode('utf-8')
+    except Exception as e:
+        print(f"Failed to fetch download page: {e}")
+        sys.exit(1)
+
+    # Search for all SPIRAM_OCT bin links
+    pattern = r'href="(/resources/firmware/ESP32_GENERIC_S3-SPIRAM_OCT-[^"]+\.bin)"'
+    matches = re.findall(pattern, html)
+    if not matches:
+        print("Error: Could not find any ESP32_GENERIC_S3-SPIRAM_OCT firmware link in HTML.")
+        sys.exit(1)
+
+    # The first release link is typically the latest stable release.
+    # Let's filter out previews unless no stable releases are found.
+    stable_links = [m for m in matches if "preview" not in m]
+    latest_path = stable_links[0] if stable_links else matches[0]
+    download_url = "https://micropython.org" + latest_path
+    
+    print(f"Latest firmware found: {download_url}")
+    print("Downloading...")
+    
+    try:
+        urllib.request.urlretrieve(download_url, FIRMWARE_LOCAL)
+        print(f"Downloaded successfully and saved as: {FIRMWARE_LOCAL}")
+    except Exception as e:
+        print(f"Failed to download firmware file: {e}")
+        sys.exit(1)
+
+def detect_device_port():
+    print("\n==================================================")
+    print("Step 2: Detecting ESP32-S3 Serial/JTAG Port")
+    print("==================================================")
+    print("Waiting for port to appear... (Hold BOOT, press RESET if needed)")
+    
+    detected_port = None
+    while not detected_port:
+        for port in PORT_CANDIDATES:
+            if os.path.exists(port):
+                detected_port = port
+                break
+        if not detected_port:
+            print(".", end="", flush=True)
+            time.sleep(0.5)
+            
+    print(f"\nDetected device at port: {detected_port}")
+    print("Waiting 1s for connection to stabilize...")
+    time.sleep(1.0)
+    return detected_port
+
+def flash_firmware(port):
+    print("\n==================================================")
+    print("Step 3: Erasing and Flashing MicroPython")
+    print("==================================================")
+    
+    # 1. Erase flash
+    print("Erasing flash memory...")
+    erase_cmd = ["./venv/bin/esptool", "-p", port, "-b", "460800", "erase_flash"]
+    try:
+        subprocess.run(erase_cmd, check=True)
+        print("Flash successfully erased.")
+    except subprocess.CalledProcessError as e:
+        print(f"Erase flash failed: {e}")
+        sys.exit(1)
+        
+    # 2. Write firmware
+    print("Writing firmware...")
+    flash_cmd = [
+        "./venv/bin/esptool", "-p", port, "-b", "460800",
+        "--before", "default-reset", "--after", "hard-reset", "write-flash",
+        "--flash-mode", "dio", "--flash-size", "16MB", "--flash-freq", "80m",
+        "0x0", FIRMWARE_LOCAL
+    ]
+    try:
+        subprocess.run(flash_cmd, check=True)
+        print("Firmware written successfully.")
+    except subprocess.CalledProcessError as e:
+        print(f"Write flash failed: {e}")
+        sys.exit(1)
+
+def deploy_minimal_loader(port):
+    print("\n==================================================")
+    print("Step 4: Deploying Minimal Loader to Flash")
+    print("==================================================")
+    print("Waiting 5s for MicroPython filesystem initialization...")
+    time.sleep(5.0)
+    
+    files_to_copy = [
+        ("minimal-loader/boot.py", ":boot.py"),
+        ("minimal-loader/main.py", ":main.py"),
+        ("minimal-loader/axp.py", ":axp.py"),
+        ("minimal-loader/unzip.py", ":unzip.py")
+    ]
+    
+    for src, dst in files_to_copy:
+        print(f"Deploying {src} -> {dst}...")
+        cp_cmd = ["./venv/bin/mpremote", "connect", port, "fs", "cp", src, dst]
+        
+        # Retry logic for filesystem availability
+        success = False
+        for attempt in range(3):
+            try:
+                subprocess.run(cp_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                success = True
+                break
+            except subprocess.CalledProcessError:
+                time.sleep(1.0)
+        
+        if not success:
+            print(f"Error: Failed to copy {src} to internal Flash.")
+            sys.exit(1)
+            
+    print("Files deployed successfully.")
+    
+    print("\n==================================================")
+    print("Step 5: Resetting the Device")
+    print("==================================================")
+    reboot_cmd = ["./venv/bin/mpremote", "connect", port, "soft-reset"]
+    try:
+        subprocess.run(reboot_cmd, check=True, stdout=subprocess.DEVNULL)
+        print("Reset triggered successfully. Minimal loader is now running!")
+    except subprocess.CalledProcessError:
+        print("Failed to trigger soft-reset. Please press the physical RESET button on the board.")
+
+if __name__ == "__main__":
+    download_latest_firmware()
+    port = detect_device_port()
+    flash_firmware(port)
+    deploy_minimal_loader(port)
+    print("\nAll tasks completed successfully!")
