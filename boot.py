@@ -3,11 +3,11 @@ import os
 import network
 import json
 import time
-from axp import AXP2101
 
 print("--- Frame bootup ---")
 try:
     print("Initializing AXP2101 PMIC...")
+    from axp import AXP2101
     axp = AXP2101()
     axp.init()
     print("PMIC initialized successfully.")
