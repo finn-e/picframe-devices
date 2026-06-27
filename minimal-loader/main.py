@@ -166,9 +166,9 @@ else:
                                         idx = (ry * 800 + rx) // 2
                                         curr = buf[idx]
                                         if rx % 2 == 0:
-                                            buf[idx] = (curr & 0x0F) | 0x10  # white is 1
+                                            buf[idx] = curr & 0x0F  # black is 0 in high nibble
                                         else:
-                                            buf[idx] = (curr & 0xF0) | 0x01  # white is 1
+                                            buf[idx] = curr & 0xF0  # black is 0 in low nibble
                 x_offset += char_w * scale
             y_offset += line_height
 
@@ -203,9 +203,9 @@ else:
                                         idx = (ry * 800 + rx) // 2
                                         curr = buf[idx]
                                         if rx % 2 == 0:
-                                            buf[idx] = (curr & 0x0F) | 0x10  # white is 1
+                                            buf[idx] = curr & 0x0F  # black is 0 in high nibble
                                         else:
-                                            buf[idx] = (curr & 0xF0) | 0x01  # white is 1
+                                            buf[idx] = curr & 0xF0  # black is 0 in low nibble
                 x_offset += char_w * scale
             y_offset += line_height
 
