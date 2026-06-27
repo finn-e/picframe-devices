@@ -631,13 +631,7 @@ def show_setup_screen(device_id):
         ]
         overlay_landscape_text(buf, text_lines, rotate_180=rotate_180)    
     orient_suffix = '_p' if current_orient.startswith('portrait') else '_l'
-    sd_ok = True
-    try:
-        os.stat('/sd')
-    except OSError:
-        sd_ok = False
-    target_path = ('/sd' if sd_ok else '') + '/no_images' + orient_suffix + '.bin'
-        
+    target_path = '/no_images' + orient_suffix + '.bin'
     try:
         with open(target_path, 'wb') as f:
             f.write(buf)
