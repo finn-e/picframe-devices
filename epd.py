@@ -1,3 +1,7 @@
+# ==========================================
+# FILE VERSION: 1.0.0
+# DESCRIPTION: Hardware driver for the Waveshare Spectra 6 7.3-inch e-Paper display.
+# ==========================================
 import machine
 import time
 
@@ -32,15 +36,17 @@ class EPD_7in3f:
         time.sleep_ms(20)
         self.rst.value(1)
         time.sleep_ms(50)
-
-    def read_busy(self, timeout_ms=15000):
+    def read_busy(self, timeout_ms=45000):
         """Busy line is active Low; wait until it goes High, with timeout_ms timeout."""
+        # Mandatory delay to allow display controller to process command and pull busy low
+        time.sleep_ms(200)
         start = time.ticks_ms()
         while self.busy.value() == 0:
             time.sleep_ms(10)
             if time.ticks_diff(time.ticks_ms(), start) > timeout_ms:
                 print("E-Paper busy wait timeout ({}s)!".format(timeout_ms // 1000))
                 break
+
 
     def send_command(self, cmd):
         self.dc.value(0)
