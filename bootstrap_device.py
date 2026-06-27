@@ -150,7 +150,8 @@ def deploy_files(port):
             (os.path.join(source_dir, "axp.py"), ":axp.py"),
             (os.path.join(source_dir, "epd.py"), ":epd.py"),
             (os.path.join(source_dir, "unzip.py"), ":unzip.py"),
-            (os.path.join(source_dir, "picframes_logo.bin"), ":picframes_logo.bin")
+            (os.path.join(source_dir, "picframes_logo_p.bin"), ":images/picframes_logo_p.bin"),
+            (os.path.join(source_dir, "picframes_logo_l.bin"), ":images/picframes_logo_l.bin")
         ]
     else:
         minimal_dir = os.path.join(script_dir, "minimal-loader")
@@ -163,9 +164,18 @@ def deploy_files(port):
             (os.path.join(minimal_dir, "main.py"), ":main.py"),
             (os.path.join(minimal_dir, "axp.py"), ":axp.py"),
             (os.path.join(minimal_dir, "unzip.py"), ":unzip.py"),
-            (os.path.join(minimal_dir, "picframes_logo.bin"), ":picframes_logo.bin")
+            (os.path.join(minimal_dir, "picframes_logo_p.bin"), ":images/picframes_logo_p.bin"),
+            (os.path.join(minimal_dir, "picframes_logo_l.bin"), ":images/picframes_logo_l.bin")
         ]
         
+    # Ensure /images directory exists on internal Flash
+    print("Creating /images directory on internal Flash...")
+    mkdir_cmd = [MPREMOTE, "connect", port, "exec", "import os; os.mkdir('/images') if 'images' not in os.listdir('/') else None"]
+    try:
+        subprocess.run(mkdir_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+
     for src, dst in files_to_copy:
         if not os.path.exists(src):
             print(f"Warning: Source file {src} does not exist. Skipping.")

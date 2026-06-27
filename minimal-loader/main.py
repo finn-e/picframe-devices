@@ -172,11 +172,51 @@ else:
                 x_offset += char_w * scale
             y_offset += line_height
 
+    def overlay_landscape_text(buf, text_lines):
+        scale = 2
+        char_w = 6
+        char_h = 8
+        line_spacing = 4
+        line_height = (char_h + line_spacing) * scale
+        
+        total_h = len(text_lines) * line_height
+        y_offset = 360 + (120 - total_h) // 2
+        
+        for line in text_lines:
+            line_w = len(line) * char_w * scale
+            x_offset = (800 - line_w) // 2
+            if x_offset < 0:
+                x_offset = 0
+                
+            for char in line:
+                glyph = FONT.get(char.upper(), FONT.get(' ', [0]*5))
+                for col_idx in range(5):
+                    col_val = glyph[col_idx]
+                    for row_idx in range(7):
+                        if (col_val & (1 << row_idx)) != 0:
+                            for dx in range(scale):
+                                for dy in range(scale):
+                                    rx = x_offset + col_idx * scale + dx
+                                    ry = y_offset + row_idx * scale + dy
+                                    
+                                    if 0 <= rx < 800 and 0 <= ry < 480:
+                                        idx = (ry * 800 + rx) // 2
+                                        curr = buf[idx]
+                                        if rx % 2 == 0:
+                                            buf[idx] = (curr & 0x0F) | 0x10  # white is 1
+                                        else:
+                                            buf[idx] = (curr & 0xF0) | 0x01  # white is 1
+                x_offset += char_w * scale
+            y_offset += line_height
+
     def show_setup_screen(device_id):
-        print("Showing setup screen on display...")
+        current_orient = config.get('orientation', 'landscape')
+        print("Showing setup screen on display in orientation:", current_orient)
         buf = bytearray(192000)
+        logo_filename = 'picframes_logo_p.bin' if current_orient == 'portrait' else 'picframes_logo_l.bin'
+        
         logo_loaded = False
-        for path in ['/picframes_logo.bin', 'picframes_logo.bin', '/sd/picframes_logo.bin']:
+        for path in ['/images/' + logo_filename, logo_filename, '/sd/images/' + logo_filename]:
             try:
                 with open(path, 'rb') as f:
                     f.readinto(buf)
@@ -191,15 +231,22 @@ else:
             for i in range(len(buf)):
                 buf[i] = 0x11
                 
-        text_lines = [
-            "PLEASE CONNECT POWER SUPPLY",
-            "IF NOT CONNECTED.",
-            "",
-            "ACCESS 'PICFRAME-{}'".format(device_id.upper()),
-            "WIFI TO SETUP THE DEVICE."
-        ]
-        
-        overlay_portrait_text(buf, text_lines)
+        if current_orient == 'portrait':
+            text_lines = [
+                "PLEASE CONNECT POWER SUPPLY",
+                "IF NOT CONNECTED.",
+                "",
+                "ACCESS 'PICFRAME-{}'".format(device_id.upper()),
+                "WIFI TO SETUP THE DEVICE."
+            ]
+            overlay_portrait_text(buf, text_lines)
+        else:
+            text_lines = [
+                "PLEASE CONNECT POWER SUPPLY IF NOT CONNECTED.",
+                "ACCESS 'PICFRAME-{}' WIFI".format(device_id.upper()),
+                "TO SETUP THE DEVICE."
+            ]
+            overlay_landscape_text(buf, text_lines)
         
         target_path = '/sd/no_images.bin' if sd_mounted else '/no_images.bin'
         try:

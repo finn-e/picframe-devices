@@ -328,11 +328,51 @@ def overlay_portrait_text(buf, text_lines):
             x_offset += char_w * scale
         y_offset += line_height
 
+def overlay_landscape_text(buf, text_lines):
+    scale = 2
+    char_w = 6
+    char_h = 8
+    line_spacing = 4
+    line_height = (char_h + line_spacing) * scale
+    
+    total_h = len(text_lines) * line_height
+    y_offset = 360 + (120 - total_h) // 2
+    
+    for line in text_lines:
+        line_w = len(line) * char_w * scale
+        x_offset = (800 - line_w) // 2
+        if x_offset < 0:
+            x_offset = 0
+            
+        for char in line:
+            glyph = FONT.get(char.upper(), FONT.get(' ', [0]*5))
+            for col_idx in range(5):
+                col_val = glyph[col_idx]
+                for row_idx in range(7):
+                    if (col_val & (1 << row_idx)) != 0:
+                        for dx in range(scale):
+                            for dy in range(scale):
+                                rx = x_offset + col_idx * scale + dx
+                                ry = y_offset + row_idx * scale + dy
+                                
+                                if 0 <= rx < 800 and 0 <= ry < 480:
+                                    idx = (ry * 800 + rx) // 2
+                                    curr = buf[idx]
+                                    if rx % 2 == 0:
+                                        buf[idx] = (curr & 0x0F) | 0x10  # white is 1
+                                    else:
+                                        buf[idx] = (curr & 0xF0) | 0x01  # white is 1
+            x_offset += char_w * scale
+        y_offset += line_height
+
 def show_setup_screen(device_id):
-    print("Showing setup screen on display...")
+    current_orient = wifi_cfg.get('orientation', 'landscape')
+    print("Showing setup screen on display in orientation:", current_orient)
     buf = bytearray(192000)
+    logo_filename = 'picframes_logo_p.bin' if current_orient == 'portrait' else 'picframes_logo_l.bin'
+    
     logo_loaded = False
-    for path in ['/picframes_logo.bin', 'picframes_logo.bin', '/sd/picframes_logo.bin']:
+    for path in ['/images/' + logo_filename, logo_filename, '/sd/images/' + logo_filename]:
         try:
             with open(path, 'rb') as f:
                 f.readinto(buf)
@@ -347,15 +387,22 @@ def show_setup_screen(device_id):
         for i in range(len(buf)):
             buf[i] = 0x11
             
-    text_lines = [
-        "PLEASE CONNECT POWER SUPPLY",
-        "IF NOT CONNECTED.",
-        "",
-        "ACCESS 'PICFRAME-{}'".format(device_id.upper()),
-        "WIFI TO SETUP THE DEVICE."
-    ]
-    
-    overlay_portrait_text(buf, text_lines)
+    if current_orient == 'portrait':
+        text_lines = [
+            "PLEASE CONNECT POWER SUPPLY",
+            "IF NOT CONNECTED.",
+            "",
+            "ACCESS 'PICFRAME-{}'".format(device_id.upper()),
+            "WIFI TO SETUP THE DEVICE."
+        ]
+        overlay_portrait_text(buf, text_lines)
+    else:
+        text_lines = [
+            "PLEASE CONNECT POWER SUPPLY IF NOT CONNECTED.",
+            "ACCESS 'PICFRAME-{}' WIFI".format(device_id.upper()),
+            "TO SETUP THE DEVICE."
+        ]
+        overlay_landscape_text(buf, text_lines)
     
     target_path = '/sd/no_images.bin'
     try:
@@ -1256,24 +1303,39 @@ def handle_connection_failure():
 def toggle_orientation():
     print("Toggling orientation...")
     current_orient = wifi_cfg.get('orientation', 'landscape')
-    new_orient = 'portrait' if current_orient == 'landscape' else 'landscape'
+    
+    orient_cycle = {
+        'portrait': 'landscape',
+        'landscape': 'portrait-upside-down',
+        'portrait-upside-down': 'landscape-upside-down',
+        'landscape-upside-down': 'portrait'
+    }
+    new_orient = orient_cycle.get(current_orient, 'landscape')
     wifi_cfg['orientation'] = new_orient
     
     try:
         with open('/sd/wifi_config.json', 'w') as f:
             json.dump(wifi_cfg, f)
-        print("Orientation updated locally to:", new_orient)
+        print("Orientation updated locally to SD config:", new_orient)
     except Exception as e:
-        print("Failed to save local orientation:", e)
+        print("Failed to save local orientation to SD config:", e)
+        
+    try:
+        with open('/wifi_config.json', 'w') as f:
+            json.dump(wifi_cfg, f)
+        print("Orientation updated locally to Flash config:", new_orient)
+    except Exception as e:
+        print("Failed to save local orientation to Flash config:", e)
         
     if ensure_wifi_connected():
         base_url = api_url.rsplit('/', 2)[0]
         orient_url = base_url + "/device_orientation"
         reset_url = base_url + "/api/wakeup/reset"
         
+        server_orient = 'portrait' if 'portrait' in new_orient else 'landscape'
         try:
-            print("Notifying server: {} -> {}".format(mac_str, new_orient))
-            res = requests.post(orient_url, json={"mac": mac_str, "orientation": new_orient}, timeout=5)
+            print("Notifying server: {} -> {}".format(mac_str, server_orient))
+            res = requests.post(orient_url, json={"mac": mac_str, "orientation": server_orient}, timeout=5)
             print("Server response:", res.text)
             res.close()
             
@@ -1361,7 +1423,10 @@ def disconnect_wifi_and_refresh(target_image):
     try:
         epd = EPD_7in3f()
         print("Writing to display:", target_image)
-        epd.display_file("/sd/" + target_image, battery_level=bat_pct)
+        img_path = target_image
+        if not target_image.startswith("/"):
+            img_path = "/sd/" + target_image
+        epd.display_file(img_path, battery_level=bat_pct)
         print("Display updated successfully.")
         try:
             with open('/sd/current_image.txt', 'w') as f:
@@ -1393,7 +1458,11 @@ def get_first_appropriate_image():
                 if isinstance(img_list, list) and len(img_list) > 0:
                     img_name = img_list[0]
                     if img_name.endswith('.bin'):
-                        return img_name
+                        try:
+                            os.stat('/sd/' + img_name)
+                            return img_name
+                        except OSError:
+                            pass
         except Exception:
             pass
     try:
@@ -1403,6 +1472,16 @@ def get_first_appropriate_image():
         if files:
             files.sort()
             return files[0]
+    except Exception:
+        pass
+    # Fallback to internal Flash /images/ folder if SD card has no matching files
+    try:
+        current_orient = wifi_cfg.get('orientation', 'landscape')
+        suffix = '_l.bin' if current_orient == 'landscape' else '_p.bin'
+        files = [f for f in os.listdir('/images') if f.endswith(suffix)]
+        if files:
+            files.sort()
+            return '/images/' + files[0]
     except Exception:
         pass
     return None
@@ -1525,6 +1604,7 @@ print("Polling server at:", api_url)
 
 while True:
     wifi_ok = ensure_wifi_connected()
+    if not wifi_ok:
         print("Wi-Fi down. Handling connection failure.")
         handle_connection_failure()
         continue

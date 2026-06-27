@@ -175,8 +175,7 @@ class EPD_7in3f:
     def display_file(self, filepath, battery_level=None):
         """
         Streams 192,000 bytes 4bpp RAW display bitstream file directly 
-        from the SD card to the panel over SPI in 4KB chunks.
-        Overlays a battery indicator in the bottom-right corner.
+        from the file to the panel over SPI.
         """
         self.init()
         self.send_command(0x10) # Write RAM command
@@ -184,49 +183,101 @@ class EPD_7in3f:
         self.dc.value(1)
         self.cs.value(0)
         
-        chunk = bytearray(4096)
-        byte_index = 0
-        
-        # Only overlay on normal images (not warnings)
+        # Load orientation to check for 180-degree rotation
+        orientation = 'landscape'
+        for path in ['/sd/wifi_config.json', '/wifi_config.json']:
+            try:
+                import json
+                with open(path, 'r') as f:
+                    cfg = json.load(f)
+                    orientation = cfg.get('orientation', 'landscape')
+                    break
+            except Exception:
+                pass
+                
+        rotate_180 = 'upside-down' in orientation
         is_warning = "no_images.bin" in filepath or "warning" in filepath
         should_overlay = not is_warning
         
-        with open(filepath, 'rb') as f:
-            while True:
-                n = f.readinto(chunk)
-                if not n:
-                    break
+        if rotate_180:
+            chunk_size = 4000
+            num_chunks = 48
+            chunk = bytearray(chunk_size)
+            
+            with open(filepath, 'rb') as f:
+                for chunk_idx in range(num_chunks - 1, -1, -1):
+                    f.seek(chunk_idx * chunk_size)
+                    f.readinto(chunk)
                     
-                if should_overlay:
-                    # Modify pixels in this chunk
-                    for i in range(n):
-                        curr_byte_pos = byte_index + i
-                        y = curr_byte_pos // 400
+                    if should_overlay:
+                        y_start = chunk_idx * 10
+                        y_end = y_start + 10
+                        if 420 <= y_end and y_start <= 475:
+                            for i in range(chunk_size):
+                                curr_byte_pos = chunk_idx * chunk_size + i
+                                y = curr_byte_pos // 400
+                                if 420 <= y <= 475:
+                                    x_byte = curr_byte_pos % 400
+                                    x_even = x_byte * 2
+                                    x_odd = x_even + 1
+                                    
+                                    if 670 <= x_even <= 790 or 670 <= x_odd <= 790:
+                                        b = chunk[i]
+                                        col_even = (b >> 4) & 0x0F
+                                        col_odd = b & 0x0F
+                                        
+                                        new_even = self.draw_battery_pixel(x_even, y, battery_level, col_even)
+                                        new_odd = self.draw_battery_pixel(x_odd, y, battery_level, col_odd)
+                                        
+                                        chunk[i] = (new_even << 4) | new_odd
+                                        
+                    for j in range(chunk_size // 2):
+                        b1 = chunk[j]
+                        b2 = chunk[chunk_size - 1 - j]
                         
-                        # Only check if we are in the battery indicator vertical range
-                        if 420 <= y <= 475:
-                            x_byte = curr_byte_pos % 400
-                            x_even = x_byte * 2
-                            x_odd = x_even + 1
-                            
-                            # Check if the horizontal range also intersects our area
-                            if 670 <= x_even <= 790 or 670 <= x_odd <= 790:
-                                b = chunk[i]
-                                col_even = (b >> 4) & 0x0F
-                                col_odd = b & 0x0F
-                                
-                                new_even = self.draw_battery_pixel(x_even, y, battery_level, col_even)
-                                new_odd = self.draw_battery_pixel(x_odd, y, battery_level, col_odd)
-                                
-                                chunk[i] = (new_even << 4) | new_odd
-                                
-                if n == len(chunk):
+                        b1_rot = ((b1 & 0x0F) << 4) | ((b1 >> 4) & 0x0F)
+                        b2_rot = ((b2 & 0x0F) << 4) | ((b2 >> 4) & 0x0F)
+                        
+                        chunk[j] = b2_rot
+                        chunk[chunk_size - 1 - j] = b1_rot
+                        
                     self.spi.write(chunk)
-                else:
-                    self.spi.write(memoryview(chunk)[:n])
+        else:
+            chunk = bytearray(4096)
+            byte_index = 0
+            with open(filepath, 'rb') as f:
+                while True:
+                    n = f.readinto(chunk)
+                    if not n:
+                        break
+                        
+                    if should_overlay:
+                        for i in range(n):
+                            curr_byte_pos = byte_index + i
+                            y = curr_byte_pos // 400
+                            
+                            if 420 <= y <= 475:
+                                x_byte = curr_byte_pos % 400
+                                x_even = x_byte * 2
+                                x_odd = x_even + 1
+                                
+                                if 670 <= x_even <= 790 or 670 <= x_odd <= 790:
+                                    b = chunk[i]
+                                    col_even = (b >> 4) & 0x0F
+                                    col_odd = b & 0x0F
+                                    
+                                    new_even = self.draw_battery_pixel(x_even, y, battery_level, col_even)
+                                    new_odd = self.draw_battery_pixel(x_odd, y, battery_level, col_odd)
+                                    
+                                    chunk[i] = (new_even << 4) | new_odd
+                                    
+                    if n == len(chunk):
+                        self.spi.write(chunk)
+                    else:
+                        self.spi.write(memoryview(chunk)[:n])
+                        
+                    byte_index += n
                     
-                byte_index += n
-                
         self.cs.value(1)
         self.turn_on_display()
         
