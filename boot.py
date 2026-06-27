@@ -1,3 +1,7 @@
+# ==========================================
+# FILE VERSION: 1.0.0
+# DESCRIPTION: Bootloader script that mounts the SD card, handles AXP PMIC, and starts captive portal if forced.
+# ==========================================
 import machine
 import os
 import network
@@ -54,27 +58,107 @@ def re_url_decode(s):
             res.append(s[i])
             i += 1
     return "".join(res)
+def save_config(config, increment_version=True):
+    if increment_version:
+        config["version"] = config.get("version", 0) + 1
+    try:
+        with open('/config.json', 'w') as f:
+            json.dump(config, f)
+        try:
+            os.remove('/wifi_config.json')
+        except:
+            pass
+    except Exception as e:
+        print("Failed to save config to Flash:", e)
+        
+    if sd_mounted:
+        try:
+            with open('/sd/config.json', 'w') as f:
+                json.dump(config, f)
+            try:
+                os.remove('/sd/wifi_config.json')
+            except:
+                pass
+        except Exception as e:
+            print("Failed to save config to SD:", e)
 
-def get_or_create_device_id(config):
-    device_id = config.get("device_id")
-    if not device_id or len(device_id) != 8:
+def sync_and_load_config():
+    flash_cfg = {}
+    sd_cfg = {}
+    
+    try:
+        with open('/config.json', 'r') as f:
+            flash_cfg = json.load(f)
+    except Exception:
+        pass
+        
+    if sd_mounted:
+        try:
+            with open('/sd/config.json', 'r') as f:
+                sd_cfg = json.load(f)
+        except Exception:
+            pass
+            
+    if not flash_cfg:
+        try:
+            with open('/wifi_config.json', 'r') as f:
+                flash_cfg = json.load(f)
+                flash_cfg['version'] = flash_cfg.get('version', 1)
+        except Exception:
+            pass
+            
+    if sd_mounted and not sd_cfg:
+        try:
+            with open('/sd/wifi_config.json', 'r') as f:
+                sd_cfg = json.load(f)
+                sd_cfg['version'] = sd_cfg.get('version', 1)
+        except Exception:
+            pass
+
+    flash_ver = flash_cfg.get('version', 0)
+    sd_ver = sd_cfg.get('version', 0)
+    
+    config = {}
+    needs_sync = False
+    
+    if flash_ver >= sd_ver and flash_cfg:
+        config = flash_cfg
+        if sd_mounted and (sd_ver < flash_ver or not sd_cfg):
+            needs_sync = True
+    elif sd_cfg:
+        config = sd_cfg
+        needs_sync = True
+    else:
+        config = {
+            "version": 1,
+            "ssid": "",
+            "password": "",
+            "orientation": "landscape",
+            "device_id": "",
+            "last_image": "",
+            "horizontal_flipped": False,
+            "vertical_flipped": False,
+            "daily_zip_url": "https://picframes.treee.house/api/daily-zip",
+            "timer": 60
+        }
+        needs_sync = True
+        
+    if not config.get("device_id") or len(config["device_id"]) != 8:
         import urandom
         import ubinascii
         b = bytes([urandom.getrandbits(8) for _ in range(4)])
-        device_id = ubinascii.hexlify(b).decode()
-        config["device_id"] = device_id
-        if sd_mounted:
-            try:
-                with open('/sd/wifi_config.json', 'w') as f:
-                    json.dump(config, f)
-            except Exception:
-                pass
-        try:
-            with open('wifi_config.json', 'w') as f:
-                json.dump(config, f)
-        except Exception:
-            pass
-    return device_id
+        config["device_id"] = ubinascii.hexlify(b).decode()
+        needs_sync = True
+        
+    if needs_sync:
+        save_config(config, increment_version=False)
+        
+    return config
+
+def get_or_create_device_id(config):
+    # Already handled in sync_and_load_config, but keep for backward compatibility
+    return config.get("device_id", "picframe")
+
 
 def is_usb_connected():
     try:
@@ -519,18 +603,7 @@ def start_ap_portal():
                         wifi_config.pop("daily_zip_url", None)
                         wifi_config.pop("update_url", None)
                     
-                    if sd_mounted:
-                        try:
-                            with open('/sd/wifi_config.json', 'w') as f:
-                                json.dump(wifi_config, f)
-                        except Exception as e:
-                            print("Write to SD failed:", e)
-                    try:
-                        with open('wifi_config.json', 'w') as f:
-                            json.dump(wifi_config, f)
-                    except Exception:
-                        pass
-                        
+                    save_config(wifi_config)                        
                     if connect_success:
                         print("Connection successful! Saving credentials and rebooting...")
                         conn.send("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n")
@@ -614,32 +687,13 @@ def start_ap_portal():
         time.sleep_ms(500)
         machine.reset()
 
-# 2. Connect to Wi-Fi network
 wlan = network.WLAN(network.STA_IF)
 wlan.active(True)
 
-wifi_config = {}
-if sd_mounted:
-    try:
-        with open('/sd/wifi_config.json', 'r') as f:
-            wifi_config = json.load(f)
-            print("Loaded Wi-Fi config from SD card.")
-    except Exception:
-        pass
-
-if not wifi_config:
-    try:
-        with open('wifi_config.json', 'r') as f:
-            wifi_config = json.load(f)
-            print("Loaded Wi-Fi config from Flash.")
-    except Exception:
-        pass
-
+wifi_config = sync_and_load_config()
 ssid = wifi_config.get("ssid", "")
 password = wifi_config.get("password", "")
-
-# Ensure device ID is set
-device_id = get_or_create_device_id(wifi_config)
+device_id = wifi_config.get("device_id", "picframe")
 
 if force_ap:
     # Explicitly forced AP portal via button hold
