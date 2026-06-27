@@ -213,7 +213,8 @@ else:
         current_orient = config.get('orientation', 'landscape')
         print("Showing setup screen on display in orientation:", current_orient)
         buf = bytearray(192000)
-        logo_filename = 'picframes_logo_p.bin' if current_orient == 'portrait' else 'picframes_logo_l.bin'
+        is_portrait = current_orient.startswith('portrait')
+        logo_filename = 'picframes_logo_p.bin' if is_portrait else 'picframes_logo_l.bin'
         
         logo_loaded = False
         for path in ['/images/' + logo_filename, logo_filename, '/sd/images/' + logo_filename]:
@@ -230,20 +231,20 @@ else:
             print("Logo bin not found. Using blank white buffer.")
             for i in range(len(buf)):
                 buf[i] = 0x11
-                
-        if current_orient == 'portrait':
+        
+        if is_portrait:
             text_lines = [
                 "PLEASE CONNECT POWER SUPPLY",
                 "IF NOT CONNECTED.",
                 "",
-                "ACCESS 'PICFRAME-{}'".format(device_id.upper()),
+                'ACCESS "PICFRAME-{}"'.format(device_id.upper()),
                 "WIFI TO SETUP THE DEVICE."
             ]
             overlay_portrait_text(buf, text_lines)
         else:
             text_lines = [
                 "PLEASE CONNECT POWER SUPPLY IF NOT CONNECTED.",
-                "ACCESS 'PICFRAME-{}' WIFI".format(device_id.upper()),
+                'ACCESS "PICFRAME-{}" WIFI'.format(device_id.upper()),
                 "TO SETUP THE DEVICE."
             ]
             overlay_landscape_text(buf, text_lines)

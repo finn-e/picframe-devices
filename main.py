@@ -393,14 +393,14 @@ def show_setup_screen(device_id):
             "PLEASE CONNECT POWER SUPPLY",
             "IF NOT CONNECTED.",
             "",
-            "ACCESS 'PICFRAME-{}'".format(device_id.upper()),
+            'ACCESS "PICFRAME-{}"'.format(device_id.upper()),
             "WIFI TO SETUP THE DEVICE."
         ]
         overlay_portrait_text(buf, text_lines)
     else:
         text_lines = [
             "PLEASE CONNECT POWER SUPPLY IF NOT CONNECTED.",
-            "ACCESS 'PICFRAME-{}' WIFI".format(device_id.upper()),
+            'ACCESS "PICFRAME-{}" WIFI'.format(device_id.upper()),
             "TO SETUP THE DEVICE."
         ]
         overlay_landscape_text(buf, text_lines)
