@@ -196,6 +196,7 @@ class EPD_7in3f:
                         orientation = cfg.get('orientation', 'landscape')
                         break
                 except Exception:
+                    pass
         rotate_180 = 'upside-down' not in orientation
         is_warning = "no_images" in filepath or "warning" in filepath
         should_overlay = not is_warning
