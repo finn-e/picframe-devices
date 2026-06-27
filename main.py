@@ -422,7 +422,10 @@ def show_setup_screen(device_id):
         
     try:
         epd = EPD_7in3f()
-        epd.display_file(target_path)
+        # Pass base orientation (no upside-down) — the buf is already in the correct
+        # portrait/landscape bitstream format; epd.display_file must not additionally
+        # rotate it 180° or the pre-rotated image will appear as landscape on screen.
+        epd.display_file(target_path, orientation='portrait' if is_portrait else 'landscape')
         print("Display updated with setup screen.")
     except Exception as e:
         print("Failed to refresh EPD:", e)

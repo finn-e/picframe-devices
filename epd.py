@@ -172,10 +172,12 @@ class EPD_7in3f:
             
         return 1  # White background inside battery
 
-    def display_file(self, filepath, battery_level=None):
+    def display_file(self, filepath, battery_level=None, orientation=None):
         """
         Streams 192,000 bytes 4bpp RAW display bitstream file directly 
         from the file to the panel over SPI.
+        Optional orientation override skips config-file read (used for setup screens
+        to avoid double-rotating pre-rotated portrait/landscape buffers).
         """
         self.init()
         self.send_command(0x10) # Write RAM command
@@ -184,16 +186,17 @@ class EPD_7in3f:
         self.cs.value(0)
         
         # Load orientation to check for 180-degree rotation
-        orientation = 'landscape'
-        for path in ['/sd/wifi_config.json', '/wifi_config.json']:
-            try:
-                import json
-                with open(path, 'r') as f:
-                    cfg = json.load(f)
-                    orientation = cfg.get('orientation', 'landscape')
-                    break
-            except Exception:
-                pass
+        if orientation is None:
+            orientation = 'landscape'
+            for path in ['/sd/wifi_config.json', '/wifi_config.json']:
+                try:
+                    import json
+                    with open(path, 'r') as f:
+                        cfg = json.load(f)
+                        orientation = cfg.get('orientation', 'landscape')
+                        break
+                except Exception:
+                    pass
         rotate_180 = 'upside-down' in orientation
         is_warning = "no_images" in filepath or "warning" in filepath
         should_overlay = not is_warning
