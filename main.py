@@ -366,11 +366,12 @@ def overlay_landscape_text(buf, text_lines):
         y_offset += line_height
 
 def show_setup_screen(device_id):
-    current_orient = wifi_cfg.get('orientation', 'landscape')
+    # Default to landscape-upside-down when unconfigured so first BOOT press lands on portrait
+    current_orient = wifi_cfg.get('orientation', 'landscape-upside-down')
     print("Showing setup screen on display in orientation:", current_orient)
+    is_portrait = current_orient.startswith('portrait')
+    logo_filename = 'picframes_logo_p.bin' if is_portrait else 'picframes_logo_l.bin'
     buf = bytearray(192000)
-    logo_filename = 'picframes_logo_p.bin' if current_orient == 'portrait' else 'picframes_logo_l.bin'
-    
     logo_loaded = False
     for path in ['/images/' + logo_filename, logo_filename, '/sd/images/' + logo_filename]:
         try:
@@ -387,7 +388,7 @@ def show_setup_screen(device_id):
         for i in range(len(buf)):
             buf[i] = 0x11
             
-    if current_orient == 'portrait':
+    if is_portrait:
         text_lines = [
             "PLEASE CONNECT POWER SUPPLY",
             "IF NOT CONNECTED.",
