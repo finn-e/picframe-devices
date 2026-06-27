@@ -1,3 +1,7 @@
+# ==========================================
+# FILE VERSION: 1.0.0
+# DESCRIPTION: Manages the main slideshow loop, WiFi captive portal, and API communication.
+# ==========================================
 import time
 import machine
 import os
@@ -53,40 +57,233 @@ wlan = network.WLAN(network.STA_IF)
 mac_bytes = wlan.config('mac')
 mac_str = ubinascii.hexlify(mac_bytes, ':').decode()
 print("Device MAC Address:", mac_str)
-
-# Load config settings
-wifi_cfg = {}
-try:
-    with open('/sd/wifi_config.json', 'r') as f:
-        wifi_cfg = json.load(f)
-except Exception:
+def check_sd_mounted():
     try:
-        with open('wifi_config.json', 'r') as f:
-            wifi_cfg = json.load(f)
+        os.stat('/sd')
+        return True
+    except OSError:
+        return False
+
+def delete_dir_recursive(path):
+    try:
+        for f in os.listdir(path):
+            sub = path + '/' + f
+            try:
+                os.listdir(sub)
+                delete_dir_recursive(sub)
+            except OSError:
+                os.remove(sub)
+        os.rmdir(path)
+    except Exception as e:
+        print("Failed to delete dir", path, ":", e)
+
+def wipe_sd_card():
+    print("Wiping SD card (preserving Python scripts)...")
+    try:
+        files = os.listdir('/sd')
+    except Exception as e:
+        print("Could not list SD card for wiping:", e)
+        return
+        
+    for filename in files:
+        # Preserve system/code files and directories
+        if filename.endswith('.py') or filename == 'config.json' or filename == 'wifi_config.json':
+            continue
+        path = '/sd/' + filename
+        try:
+            try:
+                os.listdir(path)
+                is_dir = True
+            except OSError:
+                is_dir = False
+                
+            if is_dir:
+                delete_dir_recursive(path)
+            else:
+                os.remove(path)
+            print("Wiped from SD:", filename)
+        except Exception as e:
+            print("Failed to wipe", path, ":", e)
+
+def get_file_version(path):
+    try:
+        with open(path, 'r') as f:
+            for _ in range(15):
+                line = f.readline()
+                if not line:
+                    break
+                if 'FILE VERSION:' in line:
+                    parts = line.split('FILE VERSION:')
+                    if len(parts) > 1:
+                        val = parts[1].strip()
+                        val = val.split('#')[0].strip()
+                        return val
     except Exception:
         pass
+    return None
 
-def get_or_create_device_id():
-    device_id = wifi_cfg.get("device_id")
-    if not device_id or len(device_id) != 8:
+def parse_version(ver_str):
+    if not ver_str:
+        return (0, 0, 0)
+    try:
+        parts = ver_str.split('.')
+        return tuple(int(x) for x in parts[:3])
+    except Exception:
+        return (0, 0, 0)
+
+def copy_file(src, dst):
+    with open(src, 'rb') as s:
+        with open(dst, 'wb') as d:
+            buf = bytearray(1024)
+            while True:
+                n = s.readinto(buf)
+                if not n:
+                    break
+                d.write(buf if n == len(buf) else buf[:n])
+
+def perform_software_update(zip_path):
+    print("Extracting software update to SD card...")
+    try:
+        extract_zip(zip_path, "/sd")
+    except Exception as e:
+        print("Failed to extract update zip to SD:", e)
+        return False
+        
+    files_to_sync = ['boot.py', 'main.py', 'epd.py', 'axp.py', 'unzip.py']
+    flash_updated = False
+    
+    for filename in files_to_sync:
+        sd_file = "/sd/" + filename
+        flash_file = "/" + filename
+        
+        try:
+            os.stat(sd_file)
+        except OSError:
+            continue
+            
+        ver_sd = get_file_version(sd_file)
+        ver_flash = get_file_version(flash_file)
+        
+        print("Sync checking:", filename, "| SD:", ver_sd, "| Flash:", ver_flash)
+        
+        if parse_version(ver_sd) > parse_version(ver_flash):
+            print("Upgrading", filename, "to version", ver_sd)
+            try:
+                copy_file(sd_file, flash_file)
+                flash_updated = True
+            except Exception as e:
+                print("Failed to copy", filename, "to Flash:", e)
+        else:
+            print("Preserving", filename, "(Flash version is newer or equal)")
+            
+    return flash_updated
+
+
+def save_config(config, increment_version=True):
+    if increment_version:
+        config["version"] = config.get("version", 0) + 1
+    try:
+        with open('/config.json', 'w') as f:
+            json.dump(config, f)
+        try:
+            os.remove('/wifi_config.json')
+        except:
+            pass
+    except Exception as e:
+        print("Failed to save config to Flash:", e)
+        
+    if check_sd_mounted():
+        try:
+            with open('/sd/config.json', 'w') as f:
+                json.dump(config, f)
+            try:
+                os.remove('/sd/wifi_config.json')
+            except:
+                pass
+        except Exception as e:
+            print("Failed to save config to SD:", e)
+
+def sync_and_load_config():
+    sd_mounted = check_sd_mounted()
+    flash_cfg = {}
+    sd_cfg = {}
+    
+    try:
+        with open('/config.json', 'r') as f:
+            flash_cfg = json.load(f)
+    except Exception:
+        pass
+        
+    if sd_mounted:
+        try:
+            with open('/sd/config.json', 'r') as f:
+                sd_cfg = json.load(f)
+        except Exception:
+            pass
+            
+    if not flash_cfg:
+        try:
+            with open('/wifi_config.json', 'r') as f:
+                flash_cfg = json.load(f)
+                flash_cfg['version'] = flash_cfg.get('version', 1)
+        except Exception:
+            pass
+            
+    if sd_mounted and not sd_cfg:
+        try:
+            with open('/sd/wifi_config.json', 'r') as f:
+                sd_cfg = json.load(f)
+                sd_cfg['version'] = sd_cfg.get('version', 1)
+        except Exception:
+            pass
+
+    flash_ver = flash_cfg.get('version', 0)
+    sd_ver = sd_cfg.get('version', 0)
+    
+    config = {}
+    needs_sync = False
+    
+    if flash_ver >= sd_ver and flash_cfg:
+        config = flash_cfg
+        if sd_mounted and (sd_ver < flash_ver or not sd_cfg):
+            needs_sync = True
+    elif sd_cfg:
+        config = sd_cfg
+        needs_sync = True
+    else:
+        config = {
+            "version": 1,
+            "ssid": "",
+            "password": "",
+            "orientation": "landscape",
+            "device_id": "",
+            "last_image": "",
+            "horizontal_flipped": False,
+            "vertical_flipped": False,
+            "daily_zip_url": "https://picframes.treee.house/api/daily-zip",
+            "timer": 60
+        }
+        needs_sync = True
+        
+    if not config.get("device_id") or len(config["device_id"]) != 8:
         import urandom
         import ubinascii
         b = bytes([urandom.getrandbits(8) for _ in range(4)])
-        device_id = ubinascii.hexlify(b).decode()
-        wifi_cfg["device_id"] = device_id
-        try:
-            with open('/sd/wifi_config.json', 'w') as f:
-                json.dump(wifi_cfg, f)
-        except Exception:
-            pass
-        try:
-            with open('wifi_config.json', 'w') as f:
-                json.dump(wifi_cfg, f)
-        except Exception:
-            pass
-    return device_id
+        config["device_id"] = ubinascii.hexlify(b).decode()
+        needs_sync = True
+        
+    if needs_sync:
+        save_config(config, increment_version=False)
+        
+    return config
 
-FIRMWARE_VERSION = "0.1.6"
+wifi_cfg = sync_and_load_config()
+
+def get_or_create_device_id():
+    return wifi_cfg.get("device_id", "picframe")
+
+FIRMWARE_VERSION = "1.0.0"
+
 
 # Default server URLs (will be overridden by mDNS if discovered)
 api_url = wifi_cfg.get("api_url", "https://picframes.treee.house/api/wakeup")
@@ -287,7 +484,8 @@ def draw_text_to_buffer(text_lines, width=800, height=160):
         
     return buf
 
-def overlay_portrait_text(buf, text_lines):
+
+def overlay_portrait_text(buf, text_lines, rotate_180=False):
     scale = 2
     char_w = 6
     char_h = 8
@@ -295,8 +493,23 @@ def overlay_portrait_text(buf, text_lines):
     line_height = (char_h + line_spacing) * scale
     
     total_h = len(text_lines) * line_height
-    y_offset = 600 + (200 - total_h) // 2
+    if rotate_180:
+        y_start = 0
+        y_end = 200
+    else:
+        y_start = 600
+        y_end = 800
+        
+    y_offset = y_start + (200 - total_h) // 2
     
+    # Clear the entire virtual text band (200px height) to solid White (0x11) in the buffer
+    rx_start = 799 - y_end
+    rx_end = 799 - y_start
+    for ry in range(480):
+        for rx in range(max(0, rx_start), min(800, rx_end)):
+            idx = (ry * 800 + rx) // 2
+            buf[idx] = (buf[idx] & 0x0F) | 0x10 if rx % 2 == 0 else (buf[idx] & 0xF0) | 0x01
+            
     for line in text_lines:
         line_w = len(line) * char_w * scale
         x_offset = (480 - line_w) // 2
@@ -328,7 +541,7 @@ def overlay_portrait_text(buf, text_lines):
             x_offset += char_w * scale
         y_offset += line_height
 
-def overlay_landscape_text(buf, text_lines):
+def overlay_landscape_text(buf, text_lines, rotate_180=False):
     scale = 2
     char_w = 6
     char_h = 8
@@ -336,8 +549,21 @@ def overlay_landscape_text(buf, text_lines):
     line_height = (char_h + line_spacing) * scale
     
     total_h = len(text_lines) * line_height
-    y_offset = 360 + (120 - total_h) // 2
+    if rotate_180:
+        y_start = 0
+        y_end = 120
+    else:
+        y_start = 360
+        y_end = 480
+        
+    y_offset = y_start + (120 - total_h) // 2
     
+    # Clear the entire virtual text band (120px height) to solid White (0x11) in the buffer
+    for ry in range(y_start, y_end):
+        for rx in range(800):
+            idx = (ry * 800 + rx) // 2
+            buf[idx] = (buf[idx] & 0x0F) | 0x10 if rx % 2 == 0 else (buf[idx] & 0xF0) | 0x01
+            
     for line in text_lines:
         line_w = len(line) * char_w * scale
         x_offset = (800 - line_w) // 2
@@ -364,6 +590,7 @@ def overlay_landscape_text(buf, text_lines):
                                         buf[idx] = curr & 0xF0  # black is 0 in low nibble
             x_offset += char_w * scale
         y_offset += line_height
+
 def show_setup_screen(device_id):
     current_orient = wifi_cfg.get('orientation', 'landscape')
     print("Showing setup screen on display in orientation:", current_orient)
@@ -386,6 +613,7 @@ def show_setup_screen(device_id):
         for i in range(len(buf)):
             buf[i] = 0x11
             
+    rotate_180 = 'upside-down' not in current_orient
     if is_portrait:
         text_lines = [
             "PLEASE CONNECT POWER SUPPLY",
@@ -394,15 +622,14 @@ def show_setup_screen(device_id):
             'ACCESS "PICFRAME-{}"'.format(device_id.upper()),
             "WIFI TO SETUP THE DEVICE."
         ]
-        overlay_portrait_text(buf, text_lines)
+        overlay_portrait_text(buf, text_lines, rotate_180=rotate_180)
     else:
         text_lines = [
             "PLEASE CONNECT POWER SUPPLY IF NOT CONNECTED.",
             'ACCESS "PICFRAME-{}" WIFI'.format(device_id.upper()),
             "TO SETUP THE DEVICE."
         ]
-        overlay_landscape_text(buf, text_lines)
-    
+        overlay_landscape_text(buf, text_lines, rotate_180=rotate_180)    
     orient_suffix = '_p' if current_orient.startswith('portrait') else '_l'
     sd_ok = True
     try:
@@ -1457,14 +1684,15 @@ def disconnect_wifi_and_refresh(target_image):
         epd.display_file(img_path, battery_level=bat_pct)
         print("Display updated successfully.")
         try:
+            wifi_cfg["last_image"] = target_image
+            save_config(wifi_cfg, increment_version=True)
             with open('/sd/current_image.txt', 'w') as f:
                 f.write(target_image)
         except Exception as e:
-            print("Failed to save current_image.txt:", e)
+            print("Failed to save image persistence metadata:", e)
     except Exception as e:
         print("Display refresh failed:", e)
 
-# Check if running as bootstrap loader (if /sd/main.py is missing)
 sd_main_exists = False
 try:
     os.stat('/sd/main.py')
@@ -1530,12 +1758,7 @@ def run_startup_sync_sequence():
         if response_text.startswith("UPDATE"):
             print("Firmware update available! Downloading ZIP...")
             res = requests.get(update_url, timeout=10)
-            zip_path = "/sd/update.zip"
-            try:
-                os.stat("/sd")
-            except OSError:
-                zip_path = "update.zip"
-                
+            zip_path = "/sd/update.zip" if check_sd_mounted() else "update.zip"
             with open(zip_path, 'wb') as f:
                 chunk = bytearray(2048)
                 while True:
@@ -1545,26 +1768,18 @@ def run_startup_sync_sequence():
                     f.write(chunk if n == len(chunk) else chunk[:n])
             res.close()
             
-            print("Extracting update to Flash...")
-            extract_zip(zip_path, "")
-            os.remove(zip_path)
-            
-            # Mirror wifi_config.json to Flash
+            flash_updated = perform_software_update(zip_path)
             try:
-                with open('/sd/wifi_config.json', 'r') as src:
-                    cfg_data = json.load(src)
-                with open('/wifi_config.json', 'w') as dst:
-                    json.dump(cfg_data, dst)
-                print("Mirrored wifi_config.json to internal Flash.")
-            except Exception as e:
-                print("Failed to mirror wifi_config.json:", e)
+                os.remove(zip_path)
+            except:
+                pass
                 
-            print("Soft-resetting device to run updated code...")
-            time.sleep_ms(500)
-            machine.soft_reset()
+            if flash_updated:
+                print("Soft-resetting device to run updated code...")
+                time.sleep_ms(500)
+                machine.soft_reset()
     except Exception as e:
-        print("Startup update check failed:", e)
-        
+        print("Startup update check failed:", e)        
     # 2. Pull daily-zip
     print("Requesting daily-zip from server...")
     try:
@@ -1579,12 +1794,13 @@ def run_startup_sync_sequence():
                     break
                 f.write(chunk if n == len(chunk) else chunk[:n])
         res.close()
-        print("Downloaded daily.zip successfully. Extracting to /sd...")
-        
+        print("Downloaded daily.zip successfully. Wiping SD card...")
+        wipe_sd_card()
+        print("Extracting daily-zip to SD card...")
         extract_zip(zip_path, "/sd")
         os.remove(zip_path)
-        print("Daily-zip sync completed successfully.")
-        
+        print("Daily-zip sync completed successfully. Writing configuration...")
+        save_config(wifi_cfg, increment_version=True)        
         try:
             with open('/sd/config.json', 'r') as f:
                 c = json.load(f)
@@ -1674,12 +1890,7 @@ while True:
         print("Firmware update available! Downloading ZIP from:", update_url)
         try:
             res = requests.get(update_url, timeout=10)
-            zip_path = "/sd/update.zip"
-            try:
-                os.stat("/sd")
-            except OSError:
-                zip_path = "update.zip"
-            
+            zip_path = "/sd/update.zip" if check_sd_mounted() else "update.zip"
             with open(zip_path, 'wb') as f:
                 chunk = bytearray(2048)
                 while True:
@@ -1688,17 +1899,21 @@ while True:
                         break
                     f.write(chunk if n == len(chunk) else chunk[:n])
             res.close()
-            print("Downloaded firmware update. Extracting...")
-            extract_zip(zip_path, "")
-            os.remove(zip_path)
-            print("Firmware update extracted successfully! Soft-rebooting...")
-            time.sleep(0.5)
-            machine.soft_reset()
+            
+            flash_updated = perform_software_update(zip_path)
+            try:
+                os.remove(zip_path)
+            except:
+                pass
+                
+            if flash_updated:
+                print("Firmware update extracted and synced successfully! Soft-rebooting...")
+                time.sleep(0.5)
+                machine.soft_reset()
         except Exception as e:
             print("Firmware update failed:", e)
         continue
 
-    # Sync trigger check
     force_redownload = "REDOWNLOAD" in response_text
 
     if target_image and target_image != "None" and target_image.endswith(".bin"):
