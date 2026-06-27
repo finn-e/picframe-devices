@@ -51,13 +51,20 @@ class AXP2101:
         self.write_reg(reg, val & ~(1 << bit))
 
     def init(self):
+        # 0. Set VBUS input current limit to 2.0A to prevent brownouts under peak load (EPD + SD + RF)
+        try:
+            val_lim = self.read_reg(0x16) & 0xF8
+            self.write_reg(0x16, val_lim | 0x05) # 0x05 = 2.0A limit
+            print("AXP2101 VBUS input current limit set to 2.0A")
+        except Exception as e:
+            print("Failed to set VBUS input current limit:", e)
+
         # 1. Set DCDC1 to 3.3V & Enable
         # Reg 0x82: steps=100mV, min=1500mV. (3300-1500)//100 = 18 = 0x12
         self.write_reg(0x82, 0x12)
         self.set_bit(0x80, 0) # Enable DC1
 
         # 2. Set ALDO3 to 3.3V & Enable
-        # Reg 0x94: steps=100mV, min=500mV. (3300-500)//100 = 28 = 0x1C
         val3 = self.read_reg(0x94) & 0xE0
         self.write_reg(0x94, val3 | 0x1C)
         self.set_bit(0x90, 2) # Enable ALDO3 (EPD_VCC)
