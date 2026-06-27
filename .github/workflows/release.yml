@@ -1,0 +1,25 @@
+name: Build & Release Firmware
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build ESP32-S3-PhotoPainter firmware ZIP
+        run: |
+          mkdir -p dist/ESP32-S3-PhotoPainter
+          cp generic/*.py dist/ESP32-S3-PhotoPainter/
+          cp ESP32-S3-PhotoPainter/*.py dist/ESP32-S3-PhotoPainter/
+          TAG=${{ github.event.release.tag_name }}
+          cd dist
+          zip -r ESP32-S3-PhotoPainter-${TAG}.zip ESP32-S3-PhotoPainter/
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/ESP32-S3-PhotoPainter-*.zip
