@@ -1,7 +1,10 @@
+# ==========================================
+# FILE VERSION: 1.0.0
+# DESCRIPTION: Utility module for unzipping files in MicroPython.
+# ==========================================
 import os
 import deflate
 import io
-
 def extract_zip(zip_filepath, dest_dir):
     """
     A lightweight ZIP file extractor for MicroPython using uzlib.
