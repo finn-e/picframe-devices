@@ -364,10 +364,8 @@ def overlay_landscape_text(buf, text_lines):
                                         buf[idx] = curr & 0xF0  # black is 0 in low nibble
             x_offset += char_w * scale
         y_offset += line_height
-
 def show_setup_screen(device_id):
-    # Default to landscape-upside-down when unconfigured so first BOOT press lands on portrait
-    current_orient = wifi_cfg.get('orientation', 'landscape-upside-down')
+    current_orient = wifi_cfg.get('orientation', 'landscape')
     print("Showing setup screen on display in orientation:", current_orient)
     is_portrait = current_orient.startswith('portrait')
     logo_filename = 'picframes_logo_p.bin' if is_portrait else 'picframes_logo_l.bin'
@@ -1295,13 +1293,31 @@ def run_offline_fallback():
         pass
         
     go_to_sleep(offline_sleep)
-
 def handle_connection_failure():
     unique_id = get_or_create_device_id()
-    print("Connection failed or server unreachable. Running AP Portal loop...")
+    print("Connection failed or server unreachable. Preparing AP Portal loop...")
+    
+    # 1. Turn off WiFi first to save power and prevent brownouts during display refresh
+    try:
+        wlan.active(False)
+    except Exception as e:
+        print("Failed to turn off wlan:", e)
+        
+    try:
+        import network
+        ap = network.WLAN(network.AP_IF)
+        ap.active(False)
+    except Exception:
+        pass
+        
+    time.sleep_ms(200) # Settle power
+    
+    # 2. Refresh display while WiFi is off
     show_setup_screen(unique_id)
-    # Start the AP portal. Require server IP if Wi-Fi connected but server unreachable
-    start_ap_portal(sleep_time, require_server_ip=wlan.isconnected())
+    
+    # 3. Start the AP portal (which will turn AP back on)
+    start_ap_portal(sleep_time, require_server_ip=False)
+    
     print("AP Portal finished. Attempting to reconnect to settings Wi-Fi...")
     wlan.active(True)
     ssid = wifi_cfg.get("ssid", "")
