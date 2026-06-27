@@ -248,7 +248,8 @@ else:
             ]
             overlay_landscape_text(buf, text_lines)
         
-        target_path = '/sd/no_images.bin' if sd_mounted else '/no_images.bin'
+        _osuf = '_p' if orientation.startswith('portrait') else '_l'
+        target_path = ('/sd' if sd_mounted else '') + '/no_images' + _osuf + '.bin'
         try:
             with open(target_path, 'wb') as f:
                 f.write(buf)
@@ -432,7 +433,8 @@ else:
 
     def _smart_paint_then_off(message):
         """Overlay message on random bin (or white screen), display, then power off."""
-        out = '/sd/no_images.bin' if sd_mounted else '/no_images.bin'
+        _osuf = '_p' if orientation.startswith('portrait') else '_l'
+        out = ('/sd' if sd_mounted else '') + '/no_images' + _osuf + '.bin'
         done = False
         if sd_mounted:
             try:

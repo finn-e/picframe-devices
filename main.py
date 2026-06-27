@@ -404,11 +404,13 @@ def show_setup_screen(device_id):
         ]
         overlay_landscape_text(buf, text_lines)
     
-    target_path = '/sd/no_images.bin'
+    orient_suffix = '_p' if current_orient.startswith('portrait') else '_l'
+    sd_ok = True
     try:
         os.stat('/sd')
     except OSError:
-        target_path = '/no_images.bin'
+        sd_ok = False
+    target_path = ('/sd' if sd_ok else '') + '/no_images' + orient_suffix + '.bin'
         
     try:
         with open(target_path, 'wb') as f:
@@ -554,8 +556,7 @@ def start_ap_portal(timeout_seconds, require_server_ip=False):
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.bind(('', 80))
     s.listen(1)
-    s.settimeout(2.0)
-    
+    s.settimeout(0.1)
     mac_bytes = wlan.config('mac')
     import ubinascii
     mac_str_clean = ubinascii.hexlify(mac_bytes, ':').decode()
@@ -1074,7 +1075,9 @@ def run_bootstrap_sequence():
 
     # --- Helper: paint using random-bin overlay, or fall back to white screen ---
     def _paint_message_smart(message):
-        out_path = "/sd/no_images.bin" if sd_present else "/no_images.bin"
+        _orient = wifi_cfg.get('orientation', 'landscape')
+        _osuf = '_p' if _orient.startswith('portrait') else '_l'
+        out_path = ("/sd" if sd_present else "") + "/no_images" + _osuf + ".bin"
         overlaid = False
         if sd_present:
             try:
@@ -1098,7 +1101,9 @@ def run_bootstrap_sequence():
 
     # --- Helper: white-screen paint (for USB portal instructions) ---
     def _bootstrap_paint(message):
-        out_path = "/sd/no_images.bin" if sd_present else "/no_images.bin"
+        _orient = wifi_cfg.get('orientation', 'landscape')
+        _osuf = '_p' if _orient.startswith('portrait') else '_l'
+        out_path = ("/sd" if sd_present else "") + "/no_images" + _osuf + ".bin"
         create_warning_image(message, out_path)
         try:
             epd = EPD_7in3f()
@@ -1224,8 +1229,11 @@ def display_offline_image_once():
     if not files:
         print("No image bin files found on SD card!")
         # Create and display warning image
-        create_warning_image("No images found and picFrames server unavailable. Connect to power to change wireless settings.", "/sd/no_images.bin")
-        disconnect_wifi_and_refresh("no_images.bin")
+        _orient = wifi_cfg.get('orientation', 'landscape')
+        _osuf = '_p' if _orient.startswith('portrait') else '_l'
+        _warn_path = "/sd/no_images" + _osuf + ".bin"
+        create_warning_image("No images found and picFrames server unavailable. Connect to power to change wireless settings.", _warn_path)
+        disconnect_wifi_and_refresh(_warn_path)
         return
 
     # Filter files based on orientation

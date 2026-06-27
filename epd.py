@@ -194,9 +194,8 @@ class EPD_7in3f:
                     break
             except Exception:
                 pass
-                
         rotate_180 = 'upside-down' in orientation
-        is_warning = "no_images.bin" in filepath or "warning" in filepath
+        is_warning = "no_images" in filepath or "warning" in filepath
         should_overlay = not is_warning
         
         if rotate_180:
