@@ -287,6 +287,96 @@ def draw_text_to_buffer(text_lines, width=800, height=160):
         
     return buf
 
+def overlay_portrait_text(buf, text_lines):
+    scale = 2
+    char_w = 6
+    char_h = 8
+    line_spacing = 6
+    line_height = (char_h + line_spacing) * scale
+    
+    total_h = len(text_lines) * line_height
+    y_offset = 600 + (200 - total_h) // 2
+    
+    for line in text_lines:
+        line_w = len(line) * char_w * scale
+        x_offset = (480 - line_w) // 2
+        if x_offset < 0:
+            x_offset = 0
+            
+        for char in line:
+            glyph = FONT.get(char.upper(), FONT.get(' ', [0]*5))
+            for col_idx in range(5):
+                col_val = glyph[col_idx]
+                for row_idx in range(7):
+                    if (col_val & (1 << row_idx)) != 0:
+                        for dx in range(scale):
+                            for dy in range(scale):
+                                px = x_offset + col_idx * scale + dx
+                                py = y_offset + row_idx * scale + dy
+                                
+                                # Map virtual (px, py) to 90 degrees CW rotated (rx, ry)
+                                rx = 799 - py
+                                ry = px
+                                
+                                if 0 <= rx < 800 and 0 <= ry < 480:
+                                    idx = (ry * 800 + rx) // 2
+                                    curr = buf[idx]
+                                    if rx % 2 == 0:
+                                        buf[idx] = (curr & 0x0F) | 0x10  # white is 1
+                                    else:
+                                        buf[idx] = (curr & 0xF0) | 0x01  # white is 1
+            x_offset += char_w * scale
+        y_offset += line_height
+
+def show_setup_screen(device_id):
+    print("Showing setup screen on display...")
+    buf = bytearray(192000)
+    logo_loaded = False
+    for path in ['/picframes_logo.bin', 'picframes_logo.bin', '/sd/picframes_logo.bin']:
+        try:
+            with open(path, 'rb') as f:
+                f.readinto(buf)
+            print("Loaded logo from:", path)
+            logo_loaded = True
+            break
+        except Exception:
+            pass
+            
+    if not logo_loaded:
+        print("Logo bin not found. Using blank white buffer.")
+        for i in range(len(buf)):
+            buf[i] = 0x11
+            
+    text_lines = [
+        "PLEASE CONNECT POWER SUPPLY",
+        "IF NOT CONNECTED.",
+        "",
+        "ACCESS 'PICFRAME-{}'".format(device_id.upper()),
+        "WIFI TO SETUP THE DEVICE."
+    ]
+    
+    overlay_portrait_text(buf, text_lines)
+    
+    target_path = '/sd/no_images.bin'
+    try:
+        os.stat('/sd')
+    except OSError:
+        target_path = '/no_images.bin'
+        
+    try:
+        with open(target_path, 'wb') as f:
+            f.write(buf)
+        print("Setup screen bin written to:", target_path)
+    except Exception as e:
+        print("Failed to write setup screen bin:", e)
+        
+    try:
+        epd = EPD_7in3f()
+        epd.display_file(target_path)
+        print("Display updated with setup screen.")
+    except Exception as e:
+        print("Failed to refresh EPD:", e)
+
 def create_warning_image(message, filepath):
     if not message:
         message = "No images found and picFrames server unavailable. Connect to power to change wireless settings."
@@ -323,7 +413,77 @@ def create_warning_image(message, filepath):
         print("Failed to create warning image:", e)
         return False
 
+ap_portal_active = False
+
+def dns_server_thread():
+    global ap_portal_active
+    import socket
+    import time
+    
+    udps = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    udps.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    
+    bound = False
+    for attempt in range(5):
+        try:
+            udps.bind(('', 53))
+            bound = True
+            break
+        except Exception as e:
+            print("DNS bind attempt {} failed: {}".format(attempt + 1, e))
+            time.sleep_ms(200)
+            
+    if not bound:
+        print("DNS Server failed to bind to port 53")
+        udps.close()
+        return
+        
+    udps.settimeout(1.0)
+    print("DNS Server thread started on port 53")
+    
+    while ap_portal_active:
+        try:
+            data, addr = udps.recvfrom(512)
+            if not data or len(data) < 12:
+                continue
+            
+            tx_id = data[0:2]
+            flags = b'\x81\x80'
+            qdcount = data[4:6]
+            ancount = b'\x00\x01'
+            nscount = b'\x00\x00'
+            arcount = b'\x00\x00'
+            
+            idx = 12
+            while idx < len(data):
+                length = data[idx]
+                if length == 0:
+                    idx += 1
+                    break
+                idx += 1 + length
+            
+            question_end = idx + 4
+            question = data[12:question_end]
+            
+            ans_name = b'\xc0\x0c'
+            ans_type = b'\x00\x01'
+            ans_class = b'\x00\x01'
+            ans_ttl = b'\x00\x00\x00\x3c'
+            ans_len = b'\x00\x04'
+            ans_ip = b'\xc0\xa8\x04\x01'
+            
+            response = tx_id + flags + qdcount + ancount + nscount + arcount + question + ans_name + ans_type + ans_class + ans_ttl + ans_len + ans_ip
+            udps.sendto(response, addr)
+        except OSError:
+            pass
+        except Exception as e:
+            print("DNS loop error:", e)
+            
+    udps.close()
+    print("DNS Server thread stopped")
+
 def start_ap_portal(timeout_seconds, require_server_ip=False):
+    global ap_portal_active
     device_id = get_or_create_device_id()
     ap_ssid = "PicFrame - " + device_id
     print("Starting Setup Access Point Portal: SSID = '{}'".format(ap_ssid))
@@ -334,6 +494,14 @@ def start_ap_portal(timeout_seconds, require_server_ip=False):
     
     print("AP started. IP Config:", ap.ifconfig())
     
+    # Start the DNS responder thread
+    ap_portal_active = True
+    try:
+        import _thread
+        _thread.start_new_thread(dns_server_thread, ())
+    except Exception as e:
+        print("Failed to start DNS thread:", e)
+        
     import socket
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -349,31 +517,239 @@ def start_ap_portal(timeout_seconds, require_server_ip=False):
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>PicFrame Wi-Fi Setup</title>
+    <title>PicFrame Onboarding</title>
     <style>
-        body {{ font-family: sans-serif; background: #0f172a; color: #f1f3f9; padding: 20px; }}
-        h2 {{ color: #38bdf8; }}
-        .card {{ background: #1e293b; padding: 20px; border-radius: 12px; max-width: 400px; margin: 0 auto; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }}
-        input[type=text], input[type=password] {{ width: 100%; padding: 10px; margin: 10px 0; box-sizing: border-box; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 6px; }}
-        input[type=submit] {{ background: #0ea5e9; color: white; border: none; padding: 12px; width: 100%; border-radius: 6px; font-weight: bold; cursor: pointer; }}
-        input[type=submit]:hover {{ background: #0284c7; }}
-        .error {{ color: #ef4444; background: #450a0a; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 0.9rem; }}
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700&display=swap');
+        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+        body {{
+            font-family: 'Outfit', sans-serif;
+            background: radial-gradient(circle at center, hsl(220, 30%, 12%), hsl(220, 35%, 6%));
+            color: hsl(220, 20%, 94%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }}
+        .card {{
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 32px;
+            border-radius: 20px;
+            width: 100%;
+            max-width: 440px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+            animation: fadeIn 0.6s ease-out;
+        }}
+        @keyframes fadeIn {{
+            from {{ opacity: 0; transform: translateY(20px); }}
+            to {{ opacity: 1; transform: translateY(0); }}
+        }}
+        h2 {{
+            font-weight: 700;
+            font-size: 1.8rem;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, hsl(190, 100%, 55%), hsl(260, 90%, 65%));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-align: center;
+        }}
+        .subtitle {{
+            text-align: center;
+            font-size: 0.9rem;
+            color: hsl(220, 15%, 60%);
+            margin-bottom: 24px;
+        }}
+        .info-row {{
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            font-family: monospace;
+            background: rgba(0,0,0,0.2);
+            padding: 8px 12px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            color: hsl(200, 100%, 75%);
+        }}
+        .status-card {{
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            background: rgba(0,0,0,0.15);
+        }}
+        .status-item {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.9rem;
+        }}
+        .status-label {{
+            color: hsl(220, 10%, 70%);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }}
+        .status-value {{
+            font-weight: 500;
+        }}
+        .battery-container {{
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }}
+        .battery-outer {{
+            width: 50px;
+            height: 22px;
+            border: 2px solid hsl(220, 15%, 60%);
+            border-radius: 4px;
+            padding: 2px;
+            position: relative;
+        }}
+        .battery-outer::after {{
+            content: '';
+            position: absolute;
+            right: -5px;
+            top: 5px;
+            width: 3px;
+            height: 8px;
+            background: hsl(220, 15%, 60%);
+            border-radius: 0 2px 2px 0;
+        }}
+        .battery-inner {{
+            height: 100%;
+            border-radius: 2px;
+            width: {battery_pct}%;
+            background: {battery_color};
+            transition: width 0.3s ease;
+        }}
+        .alert {{
+            border-radius: 12px;
+            padding: 14px;
+            font-size: 0.85rem;
+            line-height: 1.4;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }}
+        .alert-warning {{
+            background: rgba(239, 68, 68, 0.12);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: hsl(0, 85%, 70%);
+        }}
+        .alert-success {{
+            background: rgba(16, 185, 129, 0.12);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: hsl(140, 75%, 70%);
+        }}
+        label {{
+            display: block;
+            font-size: 0.85rem;
+            color: hsl(220, 15%, 70%);
+            margin-bottom: 6px;
+            font-weight: 500;
+        }}
+        .input-group {{
+            margin-bottom: 18px;
+            position: relative;
+        }}
+        input[type=text], input[type=password] {{
+            width: 100%;
+            padding: 12px 14px;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 10px;
+            color: #ffffff;
+            font-size: 0.95rem;
+            transition: all 0.25s ease;
+        }}
+        input[type=text]:focus, input[type=password]:focus {{
+            outline: none;
+            border-color: hsl(190, 100%, 55%);
+            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
+            background: rgba(15, 23, 42, 0.8);
+        }}
+        input[type=submit] {{
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 10px;
+            background: linear-gradient(135deg, hsl(190, 100%, 45%), hsl(260, 90%, 55%));
+            color: white;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            box-shadow: 0 4px 12px rgba(56, 189, 248, 0.2);
+            margin-top: 8px;
+        }}
+        input[type=submit]:hover {{
+            background: linear-gradient(135deg, hsl(190, 100%, 50%), hsl(260, 90%, 60%));
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(56, 189, 248, 0.3);
+        }}
+        input[type=submit]:active {{
+            transform: translateY(1px);
+        }}
+        .error-box {{
+            color: hsl(0, 85%, 65%);
+            background: rgba(239, 68, 68, 0.12);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            padding: 12px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-size: 0.85rem;
+            text-align: center;
+        }}
     </style>
 </head>
 <body>
     <div class="card">
-        <h2>📷 PicFrame Wi-Fi Config</h2>
-        <p style="font-family: monospace; font-size: 0.9rem; color: #38bdf8;">Device ID: {dev_id}</p>
-        <p style="font-family: monospace; font-size: 0.9rem; color: #38bdf8;">MAC: {mac}</p>
+        <h2>📷 PicFrame Onboarding</h2>
+        <div class="subtitle">Device Initialization Portal</div>
+        
+        <div class="info-row">
+            <span>ID: {dev_id}</span>
+            <span>MAC: {mac}</span>
+        </div>
+        
+        <div class="status-card">
+            <div class="status-item">
+                <span class="status-label">🔋 Battery Level</span>
+                <div class="battery-container">
+                    <span class="status-value">{battery_pct}%</span>
+                    <div class="battery-outer">
+                        <div class="battery-inner"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="status-item">
+                <span class="status-label">⚡ Power Source</span>
+                <span class="status-value" style="color: {power_color};">{power_source}</span>
+            </div>
+        </div>
+        
+        {alert_card}
         {error_msg}
+        
         <form method="POST" action="/save">
-            <label>SSID (Network Name):</label>
-            <input type="text" name="ssid" value="{ssid}" placeholder="MyHomeWiFi" required>
-            <label>Password:</label>
-            <input type="password" name="password" value="{password}" placeholder="••••••••">
-            <label>PicFrames Server IP/DNS {req_label}:</label>
-            <input type="text" name="server_ip" value="{server_ip}" {req_attr} placeholder="192.168.1.100:8000">
-            <input type="submit" value="Save & Connect">
+            <div class="input-group">
+                <label>Wi-Fi Network Name (SSID)</label>
+                <input type="text" name="ssid" value="{ssid}" placeholder="Enter Wi-Fi SSID" required>
+            </div>
+            <div class="input-group">
+                <label>Wi-Fi Password</label>
+                <input type="password" name="password" value="{password}" placeholder="Enter Wi-Fi Password">
+            </div>
+            <div class="input-group">
+                <label>PicFrames Server IP/DNS {req_label}</label>
+                <input type="text" name="server_ip" value="{server_ip}" {req_attr} placeholder="e.g. 192.168.1.100:8000">
+            </div>
+            <input type="submit" value="Save & Configure Frame">
         </form>
     </div>
 </body>
@@ -381,7 +757,7 @@ def start_ap_portal(timeout_seconds, require_server_ip=False):
 
     error_msg = ""
     if require_server_ip:
-        error_msg = '<div class="error">Connected to Wi-Fi but could not discover the PicFrames server via mDNS. Server IP/DNS is required.</div>'
+        error_msg = '<div class="error-box">Connected to Wi-Fi but could not discover the PicFrames server via mDNS. Server IP/DNS is required.</div>'
         
     req_label = "(Required)" if require_server_ip else "(Optional)"
     req_attr = "required" if require_server_ip else ""
@@ -389,17 +765,6 @@ def start_ap_portal(timeout_seconds, require_server_ip=False):
     ssid_val = wifi_cfg.get("ssid", "")
     password_val = wifi_cfg.get("password", "")
     server_ip_val = wifi_cfg.get("server_ip", "")
-    
-    html = html_template.format(
-        dev_id=device_id.upper(),
-        mac=mac_str_clean.upper(),
-        error_msg=error_msg,
-        ssid=ssid_val,
-        password=password_val,
-        server_ip=server_ip_val,
-        req_label=req_label,
-        req_attr=req_attr
-    )
     
     start_time = time.time()
     config_saved = False
@@ -417,8 +782,31 @@ def start_ap_portal(timeout_seconds, require_server_ip=False):
                 
         try:
             conn, addr = s.accept()
-            request = conn.recv(1024).decode('utf-8')
-            if not request:
+            req_bytes = conn.recv(1024)
+            if not req_bytes:
+                conn.close()
+                continue
+            request = req_bytes.decode('utf-8', 'ignore')
+            
+            # Parse request line to detect captive portal probes
+            lines = request.split("\r\n")
+            first_line = lines[0] if lines else ""
+            parts = first_line.split(" ")
+            method = parts[0] if len(parts) > 0 else ""
+            path = parts[1] if len(parts) > 1 else ""
+            
+            is_portal_path = (path == "/" or path.startswith("/?") or path.startswith("/save"))
+            is_local_host = ("192.168.4.1" in request)
+            
+            if not (is_portal_path and is_local_host):
+                # Redirect non-portal requests to the portal root
+                redirect_resp = (
+                    "HTTP/1.1 302 Found\r\n"
+                    "Location: http://192.168.4.1/\r\n"
+                    "Content-Length: 0\r\n"
+                    "Connection: close\r\n\r\n"
+                )
+                conn.send(redirect_resp)
                 conn.close()
                 continue
                 
@@ -492,6 +880,63 @@ def start_ap_portal(timeout_seconds, require_server_ip=False):
                     config_saved = True
                     break
             else:
+                # Query PMIC state dynamically
+                try:
+                    from axp import AXP2101
+                    axp_pmic = AXP2101()
+                    bat_pct = axp_pmic.get_battery_percentage()
+                    usb_conn = axp_pmic.is_usb_connected()
+                except Exception:
+                    bat_pct = 100
+                    usb_conn = True
+
+                if bat_pct >= 60:
+                    bat_color = "hsl(140, 75%, 50%)"
+                elif bat_pct >= 30:
+                    bat_color = "hsl(45, 85%, 50%)"
+                else:
+                    bat_color = "hsl(10, 80%, 55%)"
+
+                if usb_conn:
+                    power_source = "USB Power"
+                    power_color = "hsl(140, 75%, 65%)"
+                    alert_card = """
+                    <div class="alert alert-success">
+                        <span>🔌</span>
+                        <div>
+                            <strong>USB Power Connected</strong><br>
+                            Perfect! Keep the device plugged in to ensure a successful onboarding process.
+                        </div>
+                    </div>
+                    """
+                else:
+                    power_source = "Battery"
+                    power_color = "hsl(45, 85%, 60%)"
+                    alert_card = """
+                    <div class="alert alert-warning">
+                        <span>⚠️</span>
+                        <div>
+                            <strong>USB Power Disconnected!</strong><br>
+                            Please plug the frame into USB power during setup to prevent it from shutting down.
+                        </div>
+                    </div>
+                    """
+
+                html = html_template.format(
+                    dev_id=device_id.upper(),
+                    mac=mac_str_clean.upper(),
+                    battery_pct=bat_pct,
+                    battery_color=bat_color,
+                    power_source=power_source,
+                    power_color=power_color,
+                    alert_card=alert_card,
+                    error_msg=error_msg,
+                    ssid=ssid_val,
+                    password=password_val,
+                    server_ip=server_ip_val,
+                    req_label=req_label,
+                    req_attr=req_attr
+                )
                 conn.send("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n")
                 conn.send(html)
                 conn.close()
@@ -499,6 +944,7 @@ def start_ap_portal(timeout_seconds, require_server_ip=False):
             pass
             
     s.close()
+    ap_portal_active = False
     ap.active(False)
     
     if config_saved:
@@ -703,47 +1149,8 @@ def run_bootstrap_sequence():
         except Exception as e:
             print("Download failed:", e)
             require_ip = True
-
-    # --- Step 3: No server found — behaviour depends on power source ---
-    if not is_usb_connected():
-        # On battery: show message (on random bin if possible), then power off
-        if not ssid:
-            msg = (
-                'Please plug in to configure this frame. '
-                'No Wi-Fi credentials configured. '
-                'Connect USB power then access \"PicFrame-{}\" Wi-Fi to set up.'.format(unique_id.upper())
-            )
-        else:
-            msg = (
-                'Please plug in to configure this frame. '
-                'No PicFrames server was found on the network. '
-                'Connect USB power to reconfigure (\"PicFrame-{}\" Wi-Fi).'.format(unique_id.upper())
-            )
-        print("Battery mode: no server. Painting message and powering off.")
-        _paint_message_smart(msg)
-        wlan.active(False)
-        try:
-            from axp import AXP2101
-            axp_sleep = AXP2101()
-            axp_sleep.disable_power()
-        except Exception as e:
-            print("PMIC disable failed:", e)
-        machine.deepsleep(24 * 3600 * 1000)
-        return  # unreachable
-
-    # On USB: paint portal instructions then launch AP
-    if require_ip:
-        portal_msg = (
-            'Could not find PicFrames server automatically. '
-            'Connect to \"PicFrame-{}\" Wi-Fi, then open 192.168.4.1 '
-            'and enter Wi-Fi credentials AND the server IP address.'.format(unique_id.upper())
-        )
-    else:
-        portal_msg = (
-            'Connect to \"PicFrame-{}\" Wi-Fi on your phone or computer, '
-            'then open 192.168.4.1 in your browser to configure this frame.'.format(unique_id.upper())
-        )
-    _bootstrap_paint(portal_msg)
+    # --- Step 3: No server found — Display setup screen and start AP portal ---
+    show_setup_screen(unique_id)
     start_ap_portal(sleep_time, require_server_ip=require_ip)
 
 def display_offline_image_once():
@@ -832,67 +1239,19 @@ def run_offline_fallback():
 
 def handle_connection_failure():
     unique_id = get_or_create_device_id()
-    if is_usb_connected():
-        print("Connection failed and USB power detected. Running AP Portal loop...")
-        display_offline_image_once()
-        # Keep AP portal open for sleep_time. Require server IP if Wi-Fi is connected but server is unreachable
-        start_ap_portal(sleep_time, require_server_ip=wlan.isconnected())
-        print("AP Portal finished. Attempting to reconnect to settings Wi-Fi...")
-        wlan.active(True)
-        ssid = wifi_cfg.get("ssid", "")
-        password = wifi_cfg.get("password", "")
-        if ssid:
-            wlan.connect(ssid, password)
-            t_start = time.time()
-            while not wlan.isconnected() and time.time() - t_start < 10:
-                time.sleep_ms(100)
-    else:
-        print("Connection failed and running on battery.")
-        # If no Wi-Fi credentials configured at all (A1)
-        if not wifi_cfg.get("ssid"):
-            msg = 'Please connect power. Once power is connected, access the "PicFrame-{}" WiFi to set wireless configuration and manual PicFrames-server IP/DNS (The latter only needed if mDNS disabled).'.format(unique_id)
-            print("No Wi-Fi credentials on battery. Displaying warning:", msg)
-            create_warning_image(msg, "/sd/no_images.bin")
-            disconnect_wifi_and_refresh("no_images.bin")
-            go_to_sleep(sleep_time)
-        else:
-            # We have credentials but failed to connect (A2 or offline playback)
-            # Check if there are local orientation-matching images
-            has_offline_images = False
-            current_orient = wifi_cfg.get('orientation', 'landscape')
-            files = []
-            try:
-                with open('/sd/index.json', 'r') as f:
-                    files = json.load(f)
-            except Exception:
-                try:
-                    with open('/sd/list.json', 'r') as f:
-                        files = json.load(f)
-                except Exception:
-                    pass
-            if not files:
-                try:
-                    files = [f for f in os.listdir('/sd') if f.endswith('.bin')]
-                except Exception:
-                    pass
-            if files:
-                if current_orient == 'landscape':
-                    filtered = [f for f in files if '_l.bin' in f or f.endswith('_l.bin')]
-                else:
-                    filtered = [f for f in files if '_p.bin' in f or f.endswith('_p.bin')]
-                if filtered:
-                    has_offline_images = True
-            
-            if has_offline_images:
-                print("Local offline images found. Playing slideshow...")
-                run_offline_fallback()
-            else:
-                # No local offline images matching or at all on SD card (A2)
-                msg = 'Please connect power supply. Once power is connected, access "PicFrame-{}" WiFi to setup the device.'.format(unique_id)
-                print("No offline images on battery. Displaying setup warning:", msg)
-                create_warning_image(msg, "/sd/no_images.bin")
-                disconnect_wifi_and_refresh("no_images.bin")
-                go_to_sleep(sleep_time)
+    print("Connection failed or server unreachable. Running AP Portal loop...")
+    show_setup_screen(unique_id)
+    # Start the AP portal. Require server IP if Wi-Fi connected but server unreachable
+    start_ap_portal(sleep_time, require_server_ip=wlan.isconnected())
+    print("AP Portal finished. Attempting to reconnect to settings Wi-Fi...")
+    wlan.active(True)
+    ssid = wifi_cfg.get("ssid", "")
+    password = wifi_cfg.get("password", "")
+    if ssid:
+        wlan.connect(ssid, password)
+        t_start = time.time()
+        while not wlan.isconnected() and time.time() - t_start < 10:
+            time.sleep_ms(100)
 
 def toggle_orientation():
     print("Toggling orientation...")
@@ -953,12 +1312,7 @@ def advance_next_image():
 def wait_with_button_check(seconds):
     start = time.time()
     while time.time() - start < seconds:
-        if not is_usb_connected():
-            elapsed = time.time() - start_awake
-            if elapsed > SAFETY_TIMEOUT:
-                print("Safety timeout (45s) exceeded inside wait. Sleeping.")
-                go_to_sleep(sleep_time)
-            
+
         if boot_btn.value() == 0:
             time.sleep_ms(50)
             if boot_btn.value() == 0:
@@ -1017,22 +1371,6 @@ def disconnect_wifi_and_refresh(target_image):
     except Exception as e:
         print("Display refresh failed:", e)
 
-# Check for critically low battery on bootup (if on battery)
-if not is_usb_connected():
-    try:
-        from axp import AXP2101
-        axp_pmic = AXP2101()
-        bat_pct = axp_pmic.get_battery_percentage()
-        print("Boot-time battery check percentage:", bat_pct)
-        if bat_pct <= 10:
-            print("Battery critically low ({}%). Entering shutdown deep sleep...".format(bat_pct))
-            msg = "Battery critically low ({}%). Please connect power supply to charge the device.".format(bat_pct)
-            create_warning_image(msg, "/sd/no_images.bin")
-            disconnect_wifi_and_refresh("no_images.bin")
-            go_to_sleep(3600 * 24)
-    except Exception as e:
-        print("Failed to perform boot battery check:", e)
-
 # Check if running as bootstrap loader (if /sd/main.py is missing)
 sd_main_exists = False
 try:
@@ -1047,6 +1385,121 @@ if not sd_main_exists:
     import sys
     sys.exit(0)
 
+def get_first_appropriate_image():
+    for path in ['/sd/index.json', '/sd/list.json']:
+        try:
+            with open(path, 'r') as f:
+                img_list = json.load(f)
+                if isinstance(img_list, list) and len(img_list) > 0:
+                    img_name = img_list[0]
+                    if img_name.endswith('.bin'):
+                        return img_name
+        except Exception:
+            pass
+    try:
+        current_orient = wifi_cfg.get('orientation', 'landscape')
+        suffix = '_l.bin' if current_orient == 'landscape' else '_p.bin'
+        files = [f for f in os.listdir('/sd') if f.endswith(suffix)]
+        if files:
+            files.sort()
+            return files[0]
+    except Exception:
+        pass
+    return None
+
+def run_startup_sync_sequence():
+    global sleep_time
+    print("Starting server check-in and update sequence...")
+    dev_id = wifi_cfg.get("device_id", "picframe_node")
+    
+    # 1. Check for update
+    try:
+        payload = {"device_id": dev_id, "mac": mac_str, "version": FIRMWARE_VERSION}
+        res = requests.post(api_url, json=payload, headers={"Content-Type": "application/json"}, timeout=5)
+        response_text = res.text.strip()
+        res.close()
+        print("Startup check-in response:", response_text)
+        
+        if response_text.startswith("UPDATE"):
+            print("Firmware update available! Downloading ZIP...")
+            res = requests.get(update_url, timeout=10)
+            zip_path = "/sd/update.zip"
+            try:
+                os.stat("/sd")
+            except OSError:
+                zip_path = "update.zip"
+                
+            with open(zip_path, 'wb') as f:
+                chunk = bytearray(2048)
+                while True:
+                    n = res.raw.readinto(chunk)
+                    if not n:
+                        break
+                    f.write(chunk if n == len(chunk) else chunk[:n])
+            res.close()
+            
+            print("Extracting update to Flash...")
+            extract_zip(zip_path, "")
+            os.remove(zip_path)
+            
+            # Mirror wifi_config.json to Flash
+            try:
+                with open('/sd/wifi_config.json', 'r') as src:
+                    cfg_data = json.load(src)
+                with open('/wifi_config.json', 'w') as dst:
+                    json.dump(cfg_data, dst)
+                print("Mirrored wifi_config.json to internal Flash.")
+            except Exception as e:
+                print("Failed to mirror wifi_config.json:", e)
+                
+            print("Soft-resetting device to run updated code...")
+            time.sleep_ms(500)
+            machine.soft_reset()
+    except Exception as e:
+        print("Startup update check failed:", e)
+        
+    # 2. Pull daily-zip
+    print("Requesting daily-zip from server...")
+    try:
+        url_with_mac = daily_zip_url + "?mac=" + mac_str
+        res = requests.get(url_with_mac, timeout=10)
+        zip_path = "/sd/daily.zip"
+        with open(zip_path, 'wb') as f:
+            chunk = bytearray(2048)
+            while True:
+                n = res.raw.readinto(chunk)
+                if not n:
+                    break
+                f.write(chunk if n == len(chunk) else chunk[:n])
+        res.close()
+        print("Downloaded daily.zip successfully. Extracting to /sd...")
+        
+        extract_zip(zip_path, "/sd")
+        os.remove(zip_path)
+        print("Daily-zip sync completed successfully.")
+        
+        try:
+            with open('/sd/config.json', 'r') as f:
+                c = json.load(f)
+                sleep_time = c.get("timer", sleep_time)
+                print("Updated sleep_time to:", sleep_time)
+        except Exception:
+            pass
+    except Exception as e:
+        print("Daily-zip pull or extraction failed:", e)
+        
+    # 3. Display the first appropriate image
+    first_img = get_first_appropriate_image()
+    if first_img:
+        print("First appropriate image to display:", first_img)
+        disconnect_wifi_and_refresh(first_img)
+    else:
+        print("No appropriate images found after sync.")
+        
+    # 4. Go to deep sleep
+    print("Startup sync complete. Entering deep sleep for:", sleep_time)
+    go_to_sleep(sleep_time)
+
 # Discover central server via mDNS if Wi-Fi connected
 if wlan.isconnected():
     discovered_server = discover_server_mdns()
@@ -1055,6 +1508,9 @@ if wlan.isconnected():
         daily_zip_url = discovered_server + "/api/daily-zip"
         update_url = discovered_server + "/api/update"
         print("Discovered server endpoint dynamically via mDNS:", discovered_server)
+        
+        # Run startup sync and sleep
+        run_startup_sync_sequence()
     else:
         print("mDNS discovery failed. Handling server discovery failure.")
         handle_connection_failure()
@@ -1068,16 +1524,7 @@ device_id = wifi_cfg.get("device_id", "picframe_node")
 print("Polling server at:", api_url)
 
 while True:
-    if not is_usb_connected():
-        elapsed = time.time() - start_awake
-        if elapsed > SAFETY_TIMEOUT:
-            print("Safety timeout (45s) exceeded! Entering deep sleep to protect battery.")
-            if wlan.active():
-                wlan.active(False)
-            go_to_sleep(sleep_time)
-
     wifi_ok = ensure_wifi_connected()
-    if not wifi_ok:
         print("Wi-Fi down. Handling connection failure.")
         handle_connection_failure()
         continue

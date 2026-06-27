@@ -8,7 +8,7 @@ class AXP2101:
         global _shared_i2c
         if _shared_i2c is None:
             try:
-                _shared_i2c = machine.SoftI2C(sda=machine.Pin(sda), scl=machine.Pin(scl))
+                _shared_i2c = machine.SoftI2C(sda=machine.Pin(sda), scl=machine.Pin(scl), freq=100000)
             except Exception as e:
                 print("AXP2101 SoftI2C init failed:", e)
         self.i2c = _shared_i2c
@@ -17,12 +17,27 @@ class AXP2101:
     def write_reg(self, reg, val):
         if self.i2c is None:
             raise OSError("I2C not initialized")
-        self.i2c.writeto_mem(self.addr, reg, bytes([val]))
+        last_err = None
+        for attempt in range(3):
+            try:
+                self.i2c.writeto_mem(self.addr, reg, bytes([val]))
+                return
+            except Exception as e:
+                last_err = e
+                time.sleep_ms(10)
+        raise OSError("AXP2101 write_reg failed: " + str(last_err))
 
     def read_reg(self, reg):
         if self.i2c is None:
             raise OSError("I2C not initialized")
-        return self.i2c.readfrom_mem(self.addr, reg, 1)[0]
+        last_err = None
+        for attempt in range(3):
+            try:
+                return self.i2c.readfrom_mem(self.addr, reg, 1)[0]
+            except Exception as e:
+                last_err = e
+                time.sleep_ms(10)
+        raise OSError("AXP2101 read_reg failed: " + str(last_err))
 
     def set_bit(self, reg, bit):
         val = self.read_reg(reg)
@@ -78,4 +93,10 @@ class AXP2101:
         except Exception as e:
             print("AXP2101 read battery percentage error:", e)
             return 100
+
+    def power_off(self):
+        try:
+            self.write_reg(0x10, 0x01)
+        except Exception as e:
+            print("AXP2101 power_off failed:", e)
 

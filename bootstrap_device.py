@@ -149,7 +149,8 @@ def deploy_files(port):
             (os.path.join(source_dir, "main.py"), ":main.py"),
             (os.path.join(source_dir, "axp.py"), ":axp.py"),
             (os.path.join(source_dir, "epd.py"), ":epd.py"),
-            (os.path.join(source_dir, "unzip.py"), ":unzip.py")
+            (os.path.join(source_dir, "unzip.py"), ":unzip.py"),
+            (os.path.join(source_dir, "picframes_logo.bin"), ":picframes_logo.bin")
         ]
     else:
         minimal_dir = os.path.join(script_dir, "minimal-loader")
@@ -161,7 +162,8 @@ def deploy_files(port):
             (os.path.join(minimal_dir, "boot.py"), ":boot.py"),
             (os.path.join(minimal_dir, "main.py"), ":main.py"),
             (os.path.join(minimal_dir, "axp.py"), ":axp.py"),
-            (os.path.join(minimal_dir, "unzip.py"), ":unzip.py")
+            (os.path.join(minimal_dir, "unzip.py"), ":unzip.py"),
+            (os.path.join(minimal_dir, "picframes_logo.bin"), ":picframes_logo.bin")
         ]
         
     for src, dst in files_to_copy:
