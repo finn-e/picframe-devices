@@ -1,8 +1,11 @@
+# ==========================================
+# FILE VERSION: 1.0.0
+# DESCRIPTION: AXP2101 Power Management IC driver.
+# ==========================================
 import machine
 import time
 
 _shared_i2c = None
-
 class AXP2101:
     def __init__(self, sda=47, scl=48, addr=0x34):
         global _shared_i2c
