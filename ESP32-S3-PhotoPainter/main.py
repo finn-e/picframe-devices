@@ -30,6 +30,19 @@ try:
 except Exception as e:
     print("AXP2101 PMIC early stabilization failed:", e)
 
+def hard_reboot():
+    print("Performing hard reboot...")
+    try:
+        import machine
+        machine.deepsleep(1)
+    except Exception:
+        pass
+    try:
+        import machine
+        machine.reset()
+    except Exception:
+        pass
+
 print('--- PicFrame v2.0 starting ---')
 
 # --- Buttons ---
@@ -355,7 +368,7 @@ def start_ap_and_portal():
                     ap_active = False
                     ap.active(False)
                     time.sleep_ms(500)
-                    machine.reset()
+                    hard_reboot()
             else:
                 html = AP_SETUP_HTML.format(
                     dev_id=dev_id, mac=mac_str.upper(),
@@ -496,7 +509,7 @@ def action_toggle_orientation():
             print('change-orientation failed:', e)
     print('Orientation ->', new_orient, '- rebooting')
     time.sleep_ms(300)
-    machine.reset()
+    hard_reboot()
 
 def action_key_skip():
     print('KEY button: requesting image skip')
@@ -572,7 +585,7 @@ def run_connected_sequence():
             if flash_updated:
                 print('Flash updated - hard resetting.')
                 time.sleep_ms(300)
-                machine.reset()
+                hard_reboot()
     except Exception as e:
         print('/update failed:', e)
         run_offline_fallback()
