@@ -191,6 +191,25 @@ def apply_caption_overlay(buf, filename, mode, description, is_portrait):
             return
             
         if not is_portrait:
+            # Landscape: 1 line of description only
+            _render_outlined_text_line(buf, desc, 480 - 18, scale=1)
+        else:
+            # Portrait: 1-3 lines of description only
+            lines = _wrap_text(desc, max_chars=76)[:3]
+            if len(lines) == 1:
+                _render_outlined_text_line(buf, lines[0], 480 - 18, scale=1)
+            else:
+                for i, line in enumerate(lines):
+                    y = 480 - 12 - (len(lines) - 1 - i) * 10
+                    _render_outlined_text_line(buf, line, y, scale=1)
+    elif mode == 'title_details':
+        desc = description.upper().strip()
+        if not desc:
+            # Fallback to title only if description is empty
+            _render_outlined_text_line(buf, title, 480 - 18, scale=1)
+            return
+            
+        if not is_portrait:
             # Landscape: 1 line of description, title on the line above
             _render_outlined_text_line(buf, desc, 480 - 12, scale=1)
             _render_outlined_text_line(buf, title, 480 - 22, scale=1)
