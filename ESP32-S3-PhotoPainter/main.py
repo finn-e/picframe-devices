@@ -24,13 +24,19 @@ except Exception:
 def hard_reboot():
     print("Performing hard reboot...")
     try:
+        import network
+        network.WLAN(network.STA_IF).active(False)
+        network.WLAN(network.AP_IF).active(False)
+    except Exception:
+        pass
+    try:
         from axp import AXP2101
         AXP2101().reboot()
     except Exception as e:
         print("PMIC reboot failed, using software fallbacks:", e)
     try:
         import machine
-        machine.deepsleep(1)
+        machine.deepsleep(100)
     except Exception:
         pass
     try:
