@@ -24,6 +24,11 @@ except Exception:
 def hard_reboot():
     print("Performing hard reboot...")
     try:
+        from axp import AXP2101
+        AXP2101().reboot()
+    except Exception as e:
+        print("PMIC reboot failed, using software fallbacks:", e)
+    try:
         import machine
         machine.deepsleep(1)
     except Exception:

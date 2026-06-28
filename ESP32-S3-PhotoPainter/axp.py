@@ -112,3 +112,9 @@ class AXP2101:
         except Exception as e:
             print("AXP2101 power_off failed:", e)
 
+    def reboot(self):
+        try:
+            self.write_reg(0x10, 0x02)
+        except Exception as e:
+            print("AXP2101 reboot failed:", e)
+
