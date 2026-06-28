@@ -28,6 +28,7 @@ class EPD_7in3f:
         self.cs.value(1)
         self.dc.value(0)
         self.rst.value(1)
+        self.has_timeout = False
 
     def reset(self):
         self.rst.value(1)
@@ -36,8 +37,10 @@ class EPD_7in3f:
         time.sleep_ms(20)
         self.rst.value(1)
         time.sleep_ms(50)
-    def read_busy(self, timeout_ms=45000):
+    def read_busy(self, timeout_ms=3000):
         """Busy line is active Low; wait until it goes High, with timeout_ms timeout."""
+        if getattr(self, "has_timeout", False):
+            return
         # Mandatory delay to allow display controller to process command and pull busy low
         time.sleep_ms(200)
         start = time.ticks_ms()
@@ -45,6 +48,7 @@ class EPD_7in3f:
             time.sleep_ms(10)
             if time.ticks_diff(time.ticks_ms(), start) > timeout_ms:
                 print("E-Paper busy wait timeout ({}s)!".format(timeout_ms // 1000))
+                self.has_timeout = True
                 break
 
 

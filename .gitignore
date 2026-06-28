@@ -1,0 +1,7 @@
+# Ignore large tool dependencies/unzipped sources
+tools/xiaozhi_src/
+tools/micropython_firmware.bin
+__pycache__/
+*.pyc
+*.zip
+.DS_Store

@@ -15,11 +15,15 @@ jobs:
           mkdir -p dist/ESP32-S3-PhotoPainter
           cp generic/*.py dist/ESP32-S3-PhotoPainter/
           cp ESP32-S3-PhotoPainter/*.py dist/ESP32-S3-PhotoPainter/
+          cp ESP32-S3-PhotoPainter/*.bin dist/ESP32-S3-PhotoPainter/ || true
           TAG=${{ github.event.release.tag_name }}
           cd dist
           zip -r ESP32-S3-PhotoPainter-${TAG}.zip ESP32-S3-PhotoPainter/
+          zip -r ESP32-S3-PhotoPainter.zip ESP32-S3-PhotoPainter/
 
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/ESP32-S3-PhotoPainter-*.zip
+          files: |
+            dist/ESP32-S3-PhotoPainter-*.zip
+            dist/ESP32-S3-PhotoPainter.zip

@@ -43,6 +43,17 @@ def copy_file(src, dst):
                     break
                 d.write(buf if n == len(buf) else buf[:n])
 
+def clear_sd_py_files():
+    try:
+        for filename in os.listdir('/sd'):
+            if filename.endswith('.py'):
+                try:
+                    os.remove('/sd/' + filename)
+                except Exception:
+                    pass
+    except Exception as e:
+        print('Error clearing old .py files from SD:', e)
+
 def download_and_apply_update(zip_url, zip_dest='/sd/update.zip'):
     """
     Downloads ZIP from zip_url, extracts to /sd/, syncs newer files to Flash.
@@ -58,7 +69,9 @@ def download_and_apply_update(zip_url, zip_dest='/sd/update.zip'):
                 break
             f.write(chunk if n == len(chunk) else chunk[:n])
     res.close()
-    print('Download complete. Extracting...')
+    print('Download complete. Clearing old .py files from SD...')
+    clear_sd_py_files()
+    print('Extracting...')
     extract_zip(zip_dest, '/sd')
     try:
         os.remove(zip_dest)

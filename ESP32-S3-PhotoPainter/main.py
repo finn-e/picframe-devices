@@ -12,6 +12,24 @@ import json
 import network
 import ubinascii
 
+# Disable radio peripherals immediately to reduce power consumption and prevent brownouts during early boot
+try:
+    import network
+    network.WLAN(network.STA_IF).active(False)
+    network.WLAN(network.AP_IF).active(False)
+except Exception:
+    pass
+
+# --- Early PMIC Init (VBUS 2.0A Limit & EPD Rail Disable) ---
+try:
+    i2c = machine.SoftI2C(sda=machine.Pin(47), scl=machine.Pin(48), freq=100000)
+    i2c.writeto_mem(0x34, 0x16, b"\x05") # 2.0A VBUS current limit
+    val = i2c.readfrom_mem(0x34, 0x90, 1)[0]
+    i2c.writeto_mem(0x34, 0x90, bytes([val & ~0x0E])) # Turn off ALDO2,3,4 EPD rails
+    print("AXP2101 PMIC early stabilized.")
+except Exception as e:
+    print("AXP2101 PMIC early stabilization failed:", e)
+
 print('--- PicFrame v2.0 starting ---')
 
 # --- Buttons ---
@@ -348,7 +366,14 @@ def dns_thread():
 def show_setup_screen():
     orientation = sd_cfg.get('orientation', 'landscape')
     is_portrait = orientation.startswith('portrait')
-    logo_file = 'picframes_logo_p.bin' if is_portrait else 'picframes_logo_l.bin'
+    if orientation == 'portrait':
+        logo_file = 'picframes_logo_p.bin'
+    elif orientation == 'portrait-upside-down':
+        logo_file = 'picframes_logo_p_f.bin'
+    elif orientation == 'landscape-upside-down':
+        logo_file = 'picframes_logo_l_f.bin'
+    else:
+        logo_file = 'picframes_logo_l.bin'
     buf = bytearray(192000)
     logo_loaded = False
     for path in [logo_file, '/images/' + logo_file]:
@@ -506,9 +531,9 @@ def run_connected_sequence():
             print('Update available:', zip_url)
             flash_updated = download_and_apply_update(zip_url)
             if flash_updated:
-                print('Flash updated - soft resetting.')
+                print('Flash updated - hard resetting.')
                 time.sleep_ms(300)
-                machine.soft_reset()
+                machine.reset()
     except Exception as e:
         print('/update failed:', e)
         run_offline_fallback()
