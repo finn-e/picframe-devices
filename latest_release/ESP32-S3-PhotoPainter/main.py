@@ -257,9 +257,6 @@ def re_url_decode(s):
             res.append(s[i]); i += 1
     return ''.join(res)
 
-def escape_html_attr(val):
-    return str(val).replace('"', '&quot;')
-
 ap_active = False
 
 def start_ap_and_portal():
@@ -382,10 +379,9 @@ def start_ap_and_portal():
             else:
                 html = AP_SETUP_HTML.format(
                     dev_id=dev_id, mac=mac_str.upper(),
-                    ssid=escape_html_attr(flash_cfg.get('wifi_ssid','')),
-                    pw=escape_html_attr(flash_cfg.get('wifi_pass','')),
-                    srv=escape_html_attr(flash_cfg.get('server_url','https://picframe.treee.house')),
-                    uname=escape_html_attr(flash_cfg.get('username','')), err=''
+                    ssid=flash_cfg.get('wifi_ssid',''), pw=flash_cfg.get('wifi_pass',''),
+                    srv=flash_cfg.get('server_url','https://picframe.treee.house'),
+                    uname=flash_cfg.get('username',''), err=''
                 )
                 conn.send('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n')
                 conn.send(html)
