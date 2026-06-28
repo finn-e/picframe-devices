@@ -402,10 +402,16 @@ def dns_thread():
                         idx += 1
                         break
                     idx += 1 + l
-                question = data[12:idx+4]
-                resp = (tx_id + b'\x81\x80' + data[4:6] + b'\x00\x01\x00\x00\x00\x00' +
-                        question + b'\xc0\x0c\x00\x01\x00\x01\x00\x00\x00\x3c\x00\x04\xc0\xa8\x04\x01')
-                udps.sendto(resp, addr)
+                if idx + 4 <= len(data):
+                    question = data[12:idx+4]
+                    qtype = data[idx:idx+2]
+                    if qtype == b'\x00\x01': # Type A
+                        resp = (tx_id + b'\x81\x80' + data[4:6] + b'\x00\x01\x00\x00\x00\x00' +
+                                question + b'\xc0\x0c\x00\x01\x00\x01\x00\x00\x00\x3c\x00\x04\xc0\xa8\x04\x01')
+                    else: # AAAA or other queries: return empty response to prevent client resolver errors
+                        resp = (tx_id + b'\x81\x80' + data[4:6] + b'\x00\x00\x00\x00\x00\x00' +
+                                question)
+                    udps.sendto(resp, addr)
         except OSError:
             pass
     udps.close()
@@ -453,7 +459,7 @@ def show_setup_screen():
         'PLEASE CONNECT A POWER SUPPLY.',
         'TO SET UP YOUR PICFRAME, CONNECT TO WI-FI NETWORK:',
         ap_name[:40],
-        'THEN OPEN http://picframe.setup/ ON YOUR PHONE OR COMPUTER.',
+        'THEN OPEN http://192.168.4.1/ OR http://picframe.setup/',
         "NEED HELP? CONTACT FIN O'FLAHERTY."
     ]
     scale = 1
