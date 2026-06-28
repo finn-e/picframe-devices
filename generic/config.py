@@ -8,7 +8,7 @@ import os
 
 # Keys that live exclusively on internal Flash
 FLASH_KEYS = {
-    'wifi_ssid', 'wifi_pass', 'server_url', 'username', 'token',
+    'ssid', 'password', 'server_url', 'username', 'token',
     'update_version', 'landscape_flipped', 'portrait_flipped'
 }
 
@@ -16,8 +16,8 @@ FLASH_CONFIG_PATH = '/config.json'
 SD_CONFIG_PATH = '/sd/config.json'
 
 DEFAULT_FLASH_CONFIG = {
-    'wifi_ssid': '',
-    'wifi_pass': '',
+    'ssid': '',
+    'password': '',
     'server_url': 'https://picframe.treee.house',
     'username': '',
     'token': '',
@@ -43,11 +43,6 @@ def load_flash_config():
         for k in FLASH_KEYS:
             if k in data:
                 cfg[k] = data[k]
-        # Compatibility fallback for boot.py naming
-        if 'ssid' in data and not cfg.get('wifi_ssid'):
-            cfg['wifi_ssid'] = data['ssid']
-        if 'password' in data and not cfg.get('wifi_pass'):
-            cfg['wifi_pass'] = data['password']
     except Exception as e:
         print('Flash config load error:', e)
     return cfg
@@ -55,11 +50,6 @@ def load_flash_config():
 def save_flash_config(cfg):
     """Save only Flash-eligible keys to /config.json."""
     to_save = {k: cfg[k] for k in FLASH_KEYS if k in cfg}
-    # Add compatibility mappings for boot.py
-    if 'wifi_ssid' in cfg:
-        to_save['ssid'] = cfg['wifi_ssid']
-    if 'wifi_pass' in cfg:
-        to_save['password'] = cfg['wifi_pass']
     try:
         with open(FLASH_CONFIG_PATH, 'w') as f:
             json.dump(to_save, f)
