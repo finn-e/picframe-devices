@@ -94,8 +94,17 @@ class AXP2101:
             print("AXP2101 is_usb_connected error:", e)
             return True # safe fallback to assume plugged in
 
+    def is_battery_connected(self):
+        try:
+            reg00 = self.read_reg(0x00)
+            return (reg00 & 0x08) != 0 # Bit 3: BAT_PRESENT_STATE
+        except Exception:
+            return False
+
     def get_battery_percentage(self):
         try:
+            if not self.is_battery_connected():
+                return 0
             val = self.read_reg(0xA4)
             if val > 100:
                 if self.is_usb_connected():
@@ -104,7 +113,7 @@ class AXP2101:
             return val
         except Exception as e:
             print("AXP2101 read battery percentage error:", e)
-            return 100
+            return 0
 
     def power_off(self):
         try:
@@ -114,6 +123,12 @@ class AXP2101:
 
     def reboot(self):
         try:
+            import machine
+            # Re-init SoftI2C at ultra-slow/stable 20kHz speed to bypass Wi-Fi RF noise
+            sda_pin = machine.Pin(47, machine.Pin.OPEN_DRAIN, pull=machine.Pin.PULL_UP)
+            scl_pin = machine.Pin(48, machine.Pin.OPEN_DRAIN, pull=machine.Pin.PULL_UP)
+            self.i2c = machine.SoftI2C(sda=sda_pin, scl=scl_pin, freq=20000)
+            time.sleep_ms(50)
             self.write_reg(0x10, 0x02)
         except Exception as e:
             print("AXP2101 reboot failed:", e)

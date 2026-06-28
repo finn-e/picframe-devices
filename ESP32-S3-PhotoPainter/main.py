@@ -269,6 +269,12 @@ def start_ap_and_portal():
     ap.config(essid=ap_ssid, authmode=network.AUTH_OPEN)
     print('AP started:', ap_ssid)
 
+    # Wait for SoftAP to be fully up and active
+    for _ in range(30):
+        if ap.active():
+            break
+        time.sleep_ms(100)
+
     ap_active = True
     try:
         import _thread
@@ -389,12 +395,19 @@ def dns_thread():
     udps = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     udps.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     udps.settimeout(1.0)
-    for _ in range(5):
+    bound = False
+    for i in range(5):
         try:
             udps.bind(('', 53))
+            bound = True
             break
-        except Exception:
+        except Exception as e:
+            print("DNS bind attempt {} failed:".format(i+1), e)
             time.sleep_ms(200)
+    if not bound:
+        print("DNS Server could not bind to port 53. Exiting DNS thread.")
+        udps.close()
+        return
     while ap_active:
         try:
             data, addr = udps.recvfrom(512)
