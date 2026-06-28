@@ -274,7 +274,7 @@ def start_ap_and_portal():
                     host = line.split(":", 1)[1].strip()
                     break
 
-            is_portal_host = (host == "192.168.4.1")
+            is_portal_host = (host == "192.168.4.1" or "picframe.setup" in host.lower())
 
             if not is_portal_host:
                 # Send a 302 redirect with no-cache headers to trigger Captive Portal Assistant pop-ups
