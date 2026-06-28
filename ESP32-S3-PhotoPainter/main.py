@@ -212,7 +212,7 @@ def render_and_sleep(img_path, orientation, sleep_interval):
             ver = flash_cfg.get('update_version', '')
             apply_debug_overlay(buf, ver, orientation, img_path, flipped_l, flipped_p, bat_pct)
         else:
-            apply_branding_text(buf)
+            apply_branding_text(buf, bat_pct)
             is_portrait = "portrait" in orientation.lower()
             apply_caption_overlay(buf, img_path, caption_mode, description, is_portrait)
                 
@@ -471,8 +471,9 @@ def show_setup_screen():
         _render_text_line(buf, line, y, scale=scale)
         y += line_h
 
-    apply_battery_square(buf, get_bat_pct())
-    apply_branding_text(buf)
+    bat_pct = get_bat_pct()
+    apply_battery_square(buf, bat_pct)
+    apply_branding_text(buf, bat_pct)
 
     orient_suffix = '_p' if is_portrait else '_l'
     out_path = '/no_images' + orient_suffix + '.bin'
