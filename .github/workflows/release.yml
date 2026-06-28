@@ -1,14 +1,27 @@
 name: Build & Release Firmware
 
 on:
-  release:
-    types: [published]
+  push:
+    branches:
+      - trunk
 
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get Next Version
+        id: semver
+        uses: paulhatch/semantic-version@v5.4.0
+        with:
+          tag_prefix: "v"
+          major_pattern: "(MAJOR)"
+          minor_pattern: "feat:"
+          patch_pattern: "fix:"
+          version_format: "${major}.${minor}.${patch}"
 
       - name: Build ESP32-S3-PhotoPainter firmware ZIP
         run: |
@@ -16,14 +29,45 @@ jobs:
           cp generic/*.py dist/ESP32-S3-PhotoPainter/
           cp ESP32-S3-PhotoPainter/*.py dist/ESP32-S3-PhotoPainter/
           cp ESP32-S3-PhotoPainter/*.bin dist/ESP32-S3-PhotoPainter/ || true
-          TAG=${{ github.event.release.tag_name }}
+          TAG=${{ steps.semver.outputs.version }}
           cd dist
           zip -r ESP32-S3-PhotoPainter-${TAG}.zip ESP32-S3-PhotoPainter/
           zip -r ESP32-S3-PhotoPainter.zip ESP32-S3-PhotoPainter/
 
-      - name: Upload release asset
+      - name: Generate Changelog
+        id: changelog
+        run: |
+          echo "CHANGELOG<<EOF" >> $GITHUB_ENV
+          git log $(git describe --tags --abbrev=0 2>/dev/null || echo "")..HEAD --oneline --pretty=format:"* %s (%h)" >> $GITHUB_ENV
+          echo "" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.semver.outputs.version }}
+          name: v${{ steps.semver.outputs.version }}
+          body: |
+            ## Changelog
+            ${{ env.CHANGELOG }}
           files: |
             dist/ESP32-S3-PhotoPainter-*.zip
             dist/ESP32-S3-PhotoPainter.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Latest Release Tag
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest Firmware
+          body: |
+            Latest built release from trunk branch.
+            Version: v${{ steps.semver.outputs.version }}
+          files: |
+            dist/ESP32-S3-PhotoPainter.zip
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

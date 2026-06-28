@@ -171,12 +171,39 @@ def render_and_sleep(img_path, orientation, sleep_interval):
     disconnect_wifi()
     bat_pct = get_bat_pct()
     try:
-        from display_overlay import apply_battery_square, apply_branding_text
+        from display_overlay import apply_battery_square, apply_branding_text, apply_title_overlay, apply_debug_overlay
         buf = bytearray(192000)
         with open(img_path, 'rb') as f:
             f.readinto(buf)
+            
+        # Parse debug and title overlay options
+        debug_enabled = False
+        for d in sd_cfg.get('devices', []):
+            if d.get('mac', '').lower() == mac_str.lower():
+                debug_enabled = bool(d.get('debug', False))
+                break
+                
+        base_name = img_path.split('/')[-1]
+        if base_name.endswith('.bin'):
+            base_name = base_name[:-4]
+        for suffix in ['_l_u', '_l_f', '_p_u', '_p_f', '_l', '_p']:
+            if base_name.endswith(suffix):
+                base_name = base_name[:-len(suffix)]
+                break
+        title_on = bool(sd_cfg.get('enabled', {}).get(base_name, {}).get('title', False))
+        
         apply_battery_square(buf, bat_pct)
-        apply_branding_text(buf)
+        
+        if debug_enabled:
+            flipped_l = bool(flash_cfg.get('landscape_flipped', False))
+            flipped_p = bool(flash_cfg.get('portrait_flipped', False))
+            ver = flash_cfg.get('update_version', '')
+            apply_debug_overlay(buf, ver, orientation, img_path, flipped_l, flipped_p, bat_pct)
+        else:
+            apply_branding_text(buf)
+            if title_on:
+                apply_title_overlay(buf, img_path)
+                
         tmp_path = '/tmp_render.bin'
         with open(tmp_path, 'wb') as f:
             f.write(buf)
@@ -397,10 +424,10 @@ def show_setup_screen():
     from display_overlay import _render_text_line, apply_battery_square, apply_branding_text
     ap_name = 'PicFrame-' + mac_str.replace(':', '')
     msg_lines = [
-        'PLEASE CONNECT USB POWER.',
+        'PLEASE CONNECT A POWER SUPPLY.',
         'TO SET UP YOUR PICFRAME, CONNECT TO WI-FI NETWORK:',
         ap_name[:40],
-        'THEN OPEN http://192.168.4.1/ ON YOUR PHONE OR COMPUTER.',
+        'THEN OPEN http://picframe.setup/ ON YOUR PHONE OR COMPUTER.',
         "NEED HELP? CONTACT FIN O'FLAHERTY."
     ]
     scale = 1

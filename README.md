@@ -109,9 +109,23 @@ Fetches the latest GitHub release for the specified hardware profile and flashes
 1. Flash MicroPython firmware to the device.
 2. Copy files from `ESP32-S3-PhotoPainter/` and `generic/` to the device root using `mpremote` or the installer.
 3. Power on — device shows setup screen and broadcasts `PicFrame-<MAC>` WiFi AP.
-4. Connect to the AP and navigate to `http://192.168.4.1/`.
+4. Connect to the AP and navigate to `http://picframe.setup/`.
 5. Enter WiFi credentials, server URL, username, and password.
 6. Device registers and begins normal operation.
+
+## Development and Releases
+
+Releases are built automatically when commits are pushed to the `trunk` branch. The version number and CHANGELOG are generated automatically from commit messages using [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/#specification) and the `paulhatch/semantic-version` GitHub Action.
+
+### Commit Message Guidelines:
+All commit messages must follow the Conventional Commits specification:
+* **Fixes (triggers Patch version increment):**
+  `fix: resolve E-Paper display busy timeout lockup`
+* **Features (triggers Minor version increment):**
+  `feat: add picframe.setup DNS alias for captive portal`
+* **Breaking Changes (triggers Major version increment):**
+  `feat!: overhaul OTA update flow to wipe old SD scripts`
+  or containing `BREAKING CHANGE:` in the footer.
 
 ## License
 

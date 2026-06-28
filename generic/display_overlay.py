@@ -12,9 +12,9 @@ COL_RED    = 3
 COL_YELLOW = 2
 COL_ORANGE = 4
 
-BAT_SQ_SIZE = 4
-BAT_SQ_X = 800 - BAT_SQ_SIZE - 4  # 792
-BAT_SQ_Y = 480 - BAT_SQ_SIZE - 4  # 472
+BAT_SQ_SIZE = 6
+BAT_SQ_X = 800 - BAT_SQ_SIZE - 4  # 790
+BAT_SQ_Y = 480 - BAT_SQ_SIZE - 4  # 470
 
 FONT = {
     'A': (0x7C,0x12,0x11,0x12,0x7C), 'B': (0x7F,0x49,0x49,0x49,0x36),
@@ -38,6 +38,7 @@ FONT = {
     ' ': (0x00,0x00,0x00,0x00,0x00), '.': (0x00,0x60,0x60,0x00,0x00),
     '-': (0x08,0x08,0x08,0x08,0x08), ':': (0x00,0x24,0x24,0x00,0x00),
     '/': (0x20,0x10,0x08,0x04,0x02), ',': (0x00,0x50,0x30,0x00,0x00),
+    '': (0x00,0x00,0x00,0x00,0x00),
     '(': (0x00,0x1C,0x22,0x41,0x00), ')': (0x00,0x41,0x22,0x1C,0x00),
     '!': (0x00,0x00,0x5F,0x00,0x00), '?': (0x02,0x01,0x51,0x09,0x06),
     '_': (0x40,0x40,0x40,0x40,0x40), '+': (0x08,0x08,0x3E,0x08,0x08),
@@ -67,14 +68,54 @@ def _render_text_line(buf, text, y, scale=1, color=COL_BLACK, width=800):
                 if col_val & (1 << ri):
                     for sx in range(scale):
                         for sy in range(scale):
-                            _set_pixel(buf, x_off + ci*scale + sx, y + ri*scale + sy, color)
+                            _set_pixel(buf, x_off + ci*scale + sx, y + ri*scale + sy, color, width)
         x_off += (char_w + spacing) * scale
 
+def _render_outlined_text_line_at(buf, text, x_start, y, scale=1, width=800):
+    char_w = 5
+    spacing = 1
+    
+    # 1. Outline pass (white)
+    x_off = x_start
+    for ch in text:
+        glyph = FONT.get(ch.upper(), FONT.get(' ', (0,0,0,0,0)))
+        for ci in range(5):
+            col_val = glyph[ci]
+            for ri in range(7):
+                if col_val & (1 << ri):
+                    for ox in (-1, 0, 1):
+                        for oy in (-1, 0, 1):
+                            if ox != 0 or oy != 0:
+                                for sx in range(scale):
+                                    for sy in range(scale):
+                                        _set_pixel(buf, x_off + ci*scale + sx + ox, y + ri*scale + sy + oy, COL_WHITE, width)
+        x_off += (char_w + spacing) * scale
+
+    # 2. Body pass (black)
+    x_off = x_start
+    for ch in text:
+        glyph = FONT.get(ch.upper(), FONT.get(' ', (0,0,0,0,0)))
+        for ci in range(5):
+            col_val = glyph[ci]
+            for ri in range(7):
+                if col_val & (1 << ri):
+                    for sx in range(scale):
+                        for sy in range(scale):
+                            _set_pixel(buf, x_off + ci*scale + sx, y + ri*scale + sy, COL_BLACK, width)
+        x_off += (char_w + spacing) * scale
+
+def _render_outlined_text_line(buf, text, y, scale=1, x_center=None, width=800):
+    char_w = 5
+    spacing = 1
+    total_w = len(text) * (char_w + spacing) * scale
+    if x_center is None:
+        x_start = max(0, (width - total_w) // 2)
+    else:
+        x_start = max(0, x_center - total_w // 2)
+    _render_outlined_text_line_at(buf, text, x_start, y, scale, width)
+
 def apply_battery_square(buf, battery_pct):
-    """
-    Renders a 4x4 solid colored square 4px from bottom-right.
-    <20% triggers critical low-battery red banner.
-    """
+    """Renders a solid colored square 4px from bottom-right."""
     if battery_pct is None:
         battery_pct = 100
     if battery_pct >= 80:
@@ -105,3 +146,46 @@ def apply_branding_text(buf):
     """Renders 'PicFrames/CONNECTED DISPLAY' at bottom edge."""
     msg = 'PICFRAMES/CONNECTED DISPLAY'
     _render_text_line(buf, msg, 480 - 8, scale=1, color=COL_BLACK)
+
+def apply_title_overlay(buf, filename):
+    """Paints centered capital filename/title at bottom in black text with white outline."""
+    base = filename.split('/')[-1]
+    if base.endswith('.bin'):
+        base = base[:-4]
+    for suffix in ['_l_u', '_l_f', '_p_u', '_p_f', '_l', '_p']:
+        if base.endswith(suffix):
+            base = base[:-len(suffix)]
+            break
+    title = base.replace('_', ' ').replace('-', ' ').upper().strip()
+    _render_outlined_text_line(buf, title, 480 - 22, scale=1)
+
+def apply_debug_overlay(buf, version, orient, filename, flipped_l, flipped_p, bat_pct):
+    """Paints debug details at the bottom of the canvas."""
+    v_str = f"V{version or '2.0.0'}"
+    o_str = orient.upper()
+    f_str = filename.split('/')[-1]
+    fl_str = f"L-FLIP:{'TRUE' if flipped_l else 'FALSE'}"
+    fp_str = f"P-FLIP:{'TRUE' if flipped_p else 'FALSE'}"
+    b_val = 100 if bat_pct is None else bat_pct
+    b_str = f"BATT:{b_val}%"
+    
+    is_portrait = "portrait" in orient.lower()
+    
+    if not is_portrait:
+        # Landscape: Spread along 1 line
+        left_text = f"{v_str}  {o_str}  {f_str}  {fl_str}  {fp_str}"
+        _render_outlined_text_line_at(buf, left_text, 8, 480 - 12, scale=1)
+        
+        # Right-aligned battery text beside battery square (starts at 786 - text_w)
+        bat_w = len(b_str) * 6
+        _render_outlined_text_line_at(buf, b_str, 786 - bat_w, 480 - 12, scale=1)
+    else:
+        # Portrait: Spread along 2 lines
+        line1 = f"{v_str}  {f_str}"
+        line2 = f"{o_str}  {fl_str}  {fp_str}"
+        
+        _render_outlined_text_line_at(buf, line1, 8, 480 - 22, scale=1)
+        _render_outlined_text_line_at(buf, line2, 8, 480 - 12, scale=1)
+        
+        bat_w = len(b_str) * 6
+        _render_outlined_text_line_at(buf, b_str, 786 - bat_w, 480 - 12, scale=1)
