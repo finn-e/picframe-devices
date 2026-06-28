@@ -340,7 +340,16 @@ def start_ap_and_portal():
                     flash_cfg['username'] = uname
                     flash_cfg['token'] = tok
                     save_flash_config(flash_cfg)
-                    conn.send('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<h2>Saved! Rebooting in 3 seconds...</h2>')
+                    body = '<html><body><h2>Saved! Rebooting...</h2></body></html>'
+                    resp = (
+                        "HTTP/1.1 200 OK\r\n"
+                        "Content-Type: text/html\r\n"
+                        "Content-Length: {}\r\n"
+                        "Connection: close\r\n\r\n"
+                        "{}"
+                    ).format(len(body), body)
+                    conn.send(resp.encode('utf-8'))
+                    time.sleep_ms(2000) # Give TCP stack time to flush the response to client
                     conn.close()
                     s.close()
                     ap_active = False
