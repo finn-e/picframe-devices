@@ -11,7 +11,9 @@ class AXP2101:
         global _shared_i2c
         if _shared_i2c is None:
             try:
-                _shared_i2c = machine.SoftI2C(sda=machine.Pin(sda), scl=machine.Pin(scl), freq=100000)
+                sda_pin = machine.Pin(sda, machine.Pin.OPEN_DRAIN, pull=machine.Pin.PULL_UP)
+                scl_pin = machine.Pin(scl, machine.Pin.OPEN_DRAIN, pull=machine.Pin.PULL_UP)
+                _shared_i2c = machine.SoftI2C(sda=sda_pin, scl=scl_pin, freq=100000)
             except Exception as e:
                 print("AXP2101 SoftI2C init failed:", e)
         self.i2c = _shared_i2c

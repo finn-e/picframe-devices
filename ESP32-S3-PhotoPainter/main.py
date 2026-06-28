@@ -20,15 +20,6 @@ try:
 except Exception:
     pass
 
-# --- Early PMIC Init (VBUS 2.0A Limit & EPD Rail Disable) ---
-try:
-    i2c = machine.SoftI2C(sda=machine.Pin(47), scl=machine.Pin(48), freq=100000)
-    i2c.writeto_mem(0x34, 0x16, b"\x05") # 2.0A VBUS current limit
-    val = i2c.readfrom_mem(0x34, 0x90, 1)[0]
-    i2c.writeto_mem(0x34, 0x90, bytes([val & ~0x0E])) # Turn off ALDO2,3,4 EPD rails
-    print("AXP2101 PMIC early stabilized.")
-except Exception as e:
-    print("AXP2101 PMIC early stabilization failed:", e)
 
 def hard_reboot():
     print("Performing hard reboot...")
@@ -181,6 +172,11 @@ def disconnect_wifi():
 
 # --- Display ---
 def render_and_sleep(img_path, orientation, sleep_interval):
+    try:
+        from axp import AXP2101
+        AXP2101().init()
+    except Exception:
+        pass
     disconnect_wifi()
     bat_pct = get_bat_pct()
     try:
@@ -416,6 +412,11 @@ def dns_thread():
 
 # --- Setup screen ---
 def show_setup_screen():
+    try:
+        from axp import AXP2101
+        AXP2101().init()
+    except Exception:
+        pass
     orientation = sd_cfg.get('orientation', 'landscape')
     is_portrait = orientation.startswith('portrait')
     if orientation == 'portrait':
