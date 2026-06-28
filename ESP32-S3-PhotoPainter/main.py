@@ -171,12 +171,12 @@ def render_and_sleep(img_path, orientation, sleep_interval):
     disconnect_wifi()
     bat_pct = get_bat_pct()
     try:
-        from display_overlay import apply_battery_square, apply_branding_text, apply_title_overlay, apply_debug_overlay
+        from display_overlay import apply_battery_square, apply_branding_text, apply_caption_overlay, apply_debug_overlay
         buf = bytearray(192000)
         with open(img_path, 'rb') as f:
             f.readinto(buf)
             
-        # Parse debug and title overlay options
+        # Parse REPL debug mode and caption overlay options
         debug_enabled = False
         for d in sd_cfg.get('devices', []):
             if d.get('mac', '').lower() == mac_str.lower():
@@ -190,7 +190,10 @@ def render_and_sleep(img_path, orientation, sleep_interval):
             if base_name.endswith(suffix):
                 base_name = base_name[:-len(suffix)]
                 break
-        title_on = bool(sd_cfg.get('enabled', {}).get(base_name, {}).get('title', False))
+        
+        img_cfg = sd_cfg.get('enabled', {}).get(base_name, {})
+        caption_mode = img_cfg.get('caption_mode', 'none')
+        description = img_cfg.get('description', '')
         
         apply_battery_square(buf, bat_pct)
         
@@ -201,8 +204,8 @@ def render_and_sleep(img_path, orientation, sleep_interval):
             apply_debug_overlay(buf, ver, orientation, img_path, flipped_l, flipped_p, bat_pct)
         else:
             apply_branding_text(buf)
-            if title_on:
-                apply_title_overlay(buf, img_path)
+            is_portrait = "portrait" in orientation.lower()
+            apply_caption_overlay(buf, img_path, caption_mode, description, is_portrait)
                 
         tmp_path = '/tmp_render.bin'
         with open(tmp_path, 'wb') as f:

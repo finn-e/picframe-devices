@@ -147,8 +147,31 @@ def apply_branding_text(buf):
     msg = 'PICFRAMES/CONNECTED DISPLAY'
     _render_text_line(buf, msg, 480 - 8, scale=1, color=COL_BLACK)
 
-def apply_title_overlay(buf, filename):
-    """Paints centered capital filename/title at bottom in black text with white outline."""
+def _wrap_text(text, max_chars=76):
+    words = text.split(' ')
+    lines = []
+    curr_line = []
+    curr_len = 0
+    for w in words:
+        if not w: continue
+        if curr_len + len(w) + (1 if curr_line else 0) > max_chars:
+            if curr_line:
+                lines.append(' '.join(curr_line))
+            curr_line = [w]
+            curr_len = len(w)
+        else:
+            curr_line.append(w)
+            curr_len += len(w) + 1
+    if curr_line:
+        lines.append(' '.join(curr_line))
+    return lines
+
+def apply_caption_overlay(buf, filename, mode, description, is_portrait):
+    """Paints caption (None, Title, Details, Verbose) centered at the bottom of the canvas."""
+    if not mode or mode == 'none':
+        return
+        
+    # Extract Title text
     base = filename.split('/')[-1]
     if base.endswith('.bin'):
         base = base[:-4]
@@ -156,14 +179,45 @@ def apply_title_overlay(buf, filename):
         if base.endswith(suffix):
             base = base[:-len(suffix)]
             break
-    title = base.replace('_', ' ').replace('-', ' ').upper().strip()
-    _render_outlined_text_line(buf, title, 480 - 22, scale=1)
+    title = base.replace('_', ' ').upper().strip()
+    
+    if mode == 'title':
+        _render_outlined_text_line(buf, title, 480 - 18, scale=1)
+    elif mode == 'details':
+        desc = description.upper().strip()
+        if not desc:
+            # Fallback to title only if description is empty
+            _render_outlined_text_line(buf, title, 480 - 18, scale=1)
+            return
+            
+        if not is_portrait:
+            # Landscape: 1 line of description, title on the line above
+            _render_outlined_text_line(buf, desc, 480 - 12, scale=1)
+            _render_outlined_text_line(buf, title, 480 - 22, scale=1)
+        else:
+            # Portrait: 1-3 lines of description, title on the line above top desc line
+            lines = _wrap_text(desc, max_chars=76)[:3]
+            for i, line in enumerate(lines):
+                y = 480 - 12 - (len(lines) - 1 - i) * 10
+                _render_outlined_text_line(buf, line, y, scale=1)
+            title_y = 480 - 12 - len(lines) * 10
+            _render_outlined_text_line(buf, title, title_y, scale=1)
 
 def apply_debug_overlay(buf, version, orient, filename, flipped_l, flipped_p, bat_pct):
-    """Paints debug details at the bottom of the canvas."""
+    """Paints debug details (Verbose mode) at the bottom of the canvas."""
     v_str = f"V{version or '2.0.0'}"
     o_str = orient.upper()
-    f_str = filename.split('/')[-1]
+    
+    # Format filename to Title
+    base = filename.split('/')[-1]
+    if base.endswith('.bin'):
+        base = base[:-4]
+    for suffix in ['_l_u', '_l_f', '_p_u', '_p_f', '_l', '_p']:
+        if base.endswith(suffix):
+            base = base[:-len(suffix)]
+            break
+    f_str = base.replace('_', ' ').upper()
+    
     fl_str = f"L-FLIP:{'TRUE' if flipped_l else 'FALSE'}"
     fp_str = f"P-FLIP:{'TRUE' if flipped_p else 'FALSE'}"
     b_val = 100 if bat_pct is None else bat_pct
@@ -176,7 +230,6 @@ def apply_debug_overlay(buf, version, orient, filename, flipped_l, flipped_p, ba
         left_text = f"{v_str}  {o_str}  {f_str}  {fl_str}  {fp_str}"
         _render_outlined_text_line_at(buf, left_text, 8, 480 - 12, scale=1)
         
-        # Right-aligned battery text beside battery square (starts at 786 - text_w)
         bat_w = len(b_str) * 6
         _render_outlined_text_line_at(buf, b_str, 786 - bat_w, 480 - 12, scale=1)
     else:
