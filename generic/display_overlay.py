@@ -10,7 +10,6 @@ COL_GREEN  = 6
 COL_BLUE   = 5
 COL_RED    = 3
 COL_YELLOW = 2
-COL_ORANGE = 4
 
 BAT_SQ_SIZE = 6
 BAT_SQ_X = 800 - BAT_SQ_SIZE - 4  # 790
@@ -122,8 +121,6 @@ def apply_battery_square(buf, battery_pct):
         color = COL_GREEN
     elif battery_pct >= 60:
         color = COL_YELLOW
-    elif battery_pct >= 40:
-        color = COL_ORANGE
     elif battery_pct >= 20:
         color = COL_RED
     else:

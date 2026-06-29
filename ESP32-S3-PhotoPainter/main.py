@@ -211,40 +211,24 @@ def render_and_sleep(img_path, orientation, sleep_interval):
     go_to_sleep(sleep_interval)
 
 def _draw_message_screen(lines, orientation='landscape'):
-    """Draw text lines on the EPD for status/error messages."""
+    """Draw text lines on the EPD. Uses a clean white buffer — no logo file."""
     try:
         from axp import AXP2101
         AXP2101().init()
     except Exception:
         pass
     try:
-        is_portrait = 'portrait' in orientation
-        logo_file = ('picframes_logo_p.bin' if orientation == 'portrait'
-                     else 'picframes_logo_p_f.bin' if orientation == 'portrait-upside-down'
-                     else 'picframes_logo_l_f.bin' if orientation == 'landscape-upside-down'
-                     else 'picframes_logo_l.bin')
-        buf = bytearray(192000)
-        for path in [logo_file, '/images/' + logo_file]:
-            try:
-                with open(path, 'rb') as f: f.readinto(buf)
-                break
-            except Exception:
-                pass
-        # Clear bottom quarter to white
-        for y in range(360, 480):
-            for xb in range(400):
-                buf[y * 400 + xb] = 0x11
+        # White (nibble 1) packed as 0x11
+        buf = bytearray(b'\x11' * 192000)
 
-        from display_overlay import _render_text_line
-        scale  = 1
-        line_h = 8 * scale + 4
+        from display_overlay import _render_text_line, apply_battery_square
+        scale  = 2
+        line_h = 8 * scale + 6
         total_h = len(lines) * line_h
-        y = 360 + (120 - total_h) // 2
-        for line in lines:
-            _render_text_line(buf, line, y, scale=scale)
-            y += line_h
+        y_start = (480 - total_h) // 2
+        for i, line in enumerate(lines):
+            _render_text_line(buf, line, y_start + i * line_h, scale=scale)
 
-        from display_overlay import apply_battery_square
         apply_battery_square(buf, get_bat_pct())
 
         out_path = '/msg_screen.bin'
@@ -728,9 +712,13 @@ if not ssid:
     print('No WiFi credentials — starting AP.')
     orientation = sd_cfg.get('orientation', 'landscape')
     _draw_message_screen([
-        'PICFRAME SETUP', '',
-        'CONNECT TO WI-FI:', 'PicFrame-' + mac_str.replace(':', ''),
-        'THEN VISIT: http://192.168.4.1/',
+        'PICFRAME SETUP',
+        '',
+        'CONNECT TO WI-FI:',
+        'PicFrame-' + mac_str.replace(':', ''),
+        '',
+        'THEN VISIT:',
+        'http://192.168.4.1/',
     ], orientation)
     start_ap_and_portal(reason='setup')
 
@@ -755,10 +743,12 @@ else:
         hostname = 'picframe-' + mac_str.replace(':', '')[-8:].lower()
         orientation = sd_cfg.get('orientation', 'landscape')
         _draw_message_screen([
-            'CANNOT REACH SERVER', '',
-            server_url[:40],
-            'VISIT: http://' + ip + '/',
-            'OR: http://' + hostname + '.local/',
+            'CANNOT REACH SERVER',
+            server_url[:44],
+            '',
+            'TO RECONFIGURE VISIT:',
+            'http://' + ip + '/',
+            'http://' + hostname + '.local/',
         ], orientation)
         start_sta_reconfigure_portal()
     else:
