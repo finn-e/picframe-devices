@@ -117,11 +117,18 @@ def sync_and_load_config():
 
     flash_ver = flash_cfg.get('version', 0)
     sd_ver = sd_cfg.get('version', 0)
-    
+
     config = {}
     needs_sync = False
-    
-    if flash_ver >= sd_ver and flash_cfg:
+
+    # Flash credentials always win if present — they may have been written by a
+    # newer firmware that doesn't track versions, so version comparison would
+    # incorrectly discard them in favour of a stale SD copy.
+    if flash_cfg.get('ssid'):
+        config = flash_cfg
+        if sd_mounted and sd_cfg.get('ssid') != flash_cfg.get('ssid'):
+            needs_sync = True
+    elif flash_ver >= sd_ver and flash_cfg:
         config = flash_cfg
         if sd_mounted and (sd_ver < flash_ver or not sd_cfg):
             needs_sync = True
