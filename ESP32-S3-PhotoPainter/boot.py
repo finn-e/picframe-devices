@@ -11,6 +11,16 @@ import time
 
 print('--- Frame bootup ---')
 
+# ── Safety wait (10 s) — hold BOOT to skip ────────────────────────────────────
+_boot_pin = machine.Pin(0, machine.Pin.IN, machine.Pin.PULL_UP)
+for _i in range(10, 0, -1):
+    if _boot_pin.value() == 0:
+        print('BOOT held — skipping safety wait')
+        break
+    print('Safety wait: {}s (hold BOOT to skip)'.format(_i))
+    time.sleep(1)
+del _boot_pin, _i
+
 # ── PMIC ──────────────────────────────────────────────────────────────────────
 try:
     print('Initializing AXP2101 PMIC...')
@@ -83,13 +93,16 @@ else:
         mac_bytes = wlan.config('mac')
         mac_str   = ubinascii.hexlify(mac_bytes, ':').decode()
 
-        server_url = wifi_cfg.get('server_url', 'https://picframes-server.fly.dev')
-        username   = wifi_cfg.get('username', '')
-        token      = wifi_cfg.get('token', '')
+        server_url     = wifi_cfg.get('server_url', 'https://picframes-server.fly.dev')
+        username       = wifi_cfg.get('username', '')
+        token          = wifi_cfg.get('token', '')
+        admin_password = wifi_cfg.get('admin_password', '')
 
         try:
             import urequests
-            body = json.dumps({'mac': mac_str, 'username': username, 'password': token})
+            # On first boot token is empty — authenticate with admin password instead
+            auth = token if token else admin_password
+            body = json.dumps({'mac': mac_str, 'username': username, 'password': auth})
             res  = urequests.post(
                 server_url + '/api/register',
                 data=body,
