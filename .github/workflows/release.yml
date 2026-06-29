@@ -58,6 +58,7 @@ jobs:
             dist/ESP32-S3-PhotoPainter.zip
           draft: false
           prerelease: false
+          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -78,6 +79,6 @@ jobs:
             Version: v${{ steps.semver.outputs.version }}
           files: |
             dist/ESP32-S3-PhotoPainter.zip
-          make_latest: true
+          make_latest: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
