@@ -34,7 +34,10 @@ def flash(zip_path, port):
                 if fname.endswith('.py'):
                     fpath = os.path.join(root, fname)
                     print(f'  Uploading {fname}')
-                    subprocess.run(['mpremote','connect',port,'cp',fpath,':/' + fname], check=True)
+                    subprocess.run(
+                        ['mpremote', 'connect', port, 'resume', 'cp', fpath, ':/' + fname],
+                        check=True,
+                    )
     print('Done!')
 
 def main():
