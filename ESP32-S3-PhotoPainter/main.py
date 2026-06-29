@@ -447,6 +447,124 @@ def start_ap_and_portal(reason='setup'):
         except OSError:
             pass
 
+RECONFIG_HTML = """<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PicFrame Reconfigure</title>
+  <style>
+    *{{box-sizing:border-box;margin:0;padding:0}}
+    body{{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;
+          display:flex;align-items:center;justify-content:center;padding:20px}}
+    .card{{background:rgba(30,41,59,.8);border:1px solid rgba(255,255,255,.08);padding:32px;
+           border-radius:20px;width:100%;max-width:440px}}
+    h2{{font-weight:700;font-size:1.7rem;margin-bottom:6px;
+        background:linear-gradient(135deg,hsl(190,100%,55%),hsl(260,90%,65%));
+        -webkit-background-clip:text;-webkit-text-fill-color:transparent;text-align:center}}
+    .sub{{text-align:center;color:#64748b;font-size:.85rem;margin-bottom:20px}}
+    .err{{color:hsl(0,85%,65%);background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.2);
+          padding:10px;border-radius:8px;margin-bottom:14px;font-size:.82rem;text-align:center}}
+    label{{display:block;font-size:.82rem;color:#94a3b8;margin-bottom:4px;font-weight:500}}
+    .ig{{margin-bottom:14px}}
+    input[type=text],input[type=password]{{width:100%;padding:10px 12px;
+      background:rgba(15,23,42,.6);border:1px solid rgba(255,255,255,.1);
+      border-radius:8px;color:#fff;font-size:.92rem}}
+    input[type=submit]{{width:100%;padding:12px;border:none;border-radius:9px;
+      background:linear-gradient(135deg,hsl(190,100%,45%),hsl(260,90%,55%));
+      color:#fff;font-size:.97rem;font-weight:600;cursor:pointer;margin-top:4px}}
+    .notice{{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);
+             border-radius:10px;padding:12px;font-size:.82rem;margin-bottom:20px;
+             color:#fca5a5;line-height:1.5}}
+  </style>
+</head>
+<body><div class="card">
+  <h2>PicFrame</h2>
+  <div class="sub">Device: {dev_id} &nbsp;|&nbsp; IP: {ip}</div>
+  <div class="notice">&#x26A0; Cannot reach the PicFrames server. Update your server details below.</div>
+  <form method="POST" action="/save">
+    <div class="ig"><label>PicFrames Server URL</label>
+      <input type="text" name="server_url" value="{server_url}"
+             placeholder="https://picframes-server.fly.dev" required></div>
+    <div class="ig"><label>Username</label>
+      <input type="text" name="username" value="{username}"></div>
+    <div class="ig"><label>Password</label>
+      <input type="password" name="token" value=""
+             placeholder="Leave blank to keep existing"></div>
+    <input type="submit" value="Save &amp; Reboot">
+  </form>
+</div></body></html>"""
+
+def start_sta_reconfigure_portal():
+    """Web server on the existing STA WiFi connection for server reconfiguration."""
+    global wifi_cfg
+    import socket
+
+    dev_id = mac_str.replace(':', '')[-8:].upper()
+    ip = wlan.ifconfig()[0]
+
+    # Set mDNS hostname so device is reachable as picframe-XXXX.local
+    hostname = 'picframe-' + mac_str.replace(':', '')[-8:].lower()
+    try:
+        network.hostname(hostname)
+        print('mDNS hostname:', hostname + '.local')
+    except Exception as e:
+        print('hostname set failed:', e)
+
+    print('=== RECONFIGURE MODE ===')
+    print('Connect to same WiFi network and visit:')
+    print('  http://{}/'.format(ip))
+    print('  http://{}.local/'.format(hostname))
+    print('========================')
+
+    s = socket.socket()
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    s.bind(('', 80))
+    s.listen(1)
+    s.settimeout(0.2)
+
+    while True:
+        try:
+            conn, addr = s.accept()
+            req = conn.recv(2048).decode('utf-8', 'ignore')
+            lines = req.split('\r\n')
+            first = lines[0].split(' ') if lines else []
+            method = first[0] if first else ''
+            path   = first[1] if len(first) > 1 else '/'
+
+            if method == 'POST' and '/save' in path:
+                body = req.split('\r\n\r\n', 1)[-1]
+                p = {}
+                for kv in body.split('&'):
+                    if '=' in kv:
+                        k, v = kv.split('=', 1)
+                        p[k] = re_url_decode(v)
+                server_url_v = p.get('server_url', '').strip() or wifi_cfg.get('server_url', '')
+                username_v   = p.get('username', '').strip()
+                token_v      = p.get('token', '').strip()
+                wifi_cfg['server_url'] = server_url_v
+                wifi_cfg['username']   = username_v
+                if token_v:
+                    wifi_cfg['token'] = token_v
+                save_wifi_config(wifi_cfg)
+                resp_body = '<html><body><h2>Saved! Rebooting...</h2></body></html>'
+                conn.send(('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n'
+                            'Connection: close\r\n\r\n{}'.format(len(resp_body), resp_body)).encode())
+                time.sleep_ms(2000)
+                conn.close(); s.close()
+                time.sleep_ms(500)
+                hard_reboot()
+            else:
+                html = RECONFIG_HTML.format(
+                    dev_id=dev_id, ip=ip,
+                    server_url=escape_html(wifi_cfg.get('server_url', '')),
+                    username=escape_html(wifi_cfg.get('username', '')),
+                )
+                conn.send('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n')
+                conn.send(html)
+                conn.close()
+        except OSError:
+            pass
+
 # ── Button actions ────────────────────────────────────────────────────────────
 def action_toggle_orientation():
     print('BOOT: toggling orientation')
@@ -633,13 +751,15 @@ else:
         print('Server unreachable:', e)
 
     if not reachable:
+        ip = wlan.ifconfig()[0]
+        hostname = 'picframe-' + mac_str.replace(':', '')[-8:].lower()
         orientation = sd_cfg.get('orientation', 'landscape')
         _draw_message_screen([
             'CANNOT REACH SERVER', '',
             server_url[:40],
-            'CONNECT TO: PicFrame-' + mac_str.replace(':', '')[-8:],
-            'TO RECONFIGURE',
+            'VISIT: http://' + ip + '/',
+            'OR: http://' + hostname + '.local/',
         ], orientation)
-        start_ap_and_portal(reason='unreachable')
+        start_sta_reconfigure_portal()
     else:
         run_connected_sequence()
