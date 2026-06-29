@@ -33,11 +33,11 @@ def make_headers(mac, token):
 
 def call_update(server_url, mac, token, hw_profile, update_version):
     """
-    GET /update?hw=ESP32-S3-PhotoPainter&version=<update_version>
+    GET /api/update?hw=ESP32-S3-PhotoPainter&version=<update_version>
     Returns: None if current, or GitHub ZIP URL string if update available.
     Raises exception on network failure.
     """
-    url = server_url + '/update'
+    url = server_url + '/api/update'
     params = '?hw=' + hw_profile + '&version=' + (update_version or '')
     res = requests.get(url + params, headers=make_headers(mac, token), timeout=10)
     if res.status_code == 200 and res.text:
@@ -49,11 +49,11 @@ def call_update(server_url, mac, token, hw_profile, update_version):
 
 def call_daily_config(server_url, mac, token):
     """
-    GET /daily-config
+    GET /api/daily-config
     Returns parsed JSON dict.
     Raises exception on failure.
     """
-    url = server_url + '/daily-config'
+    url = server_url + '/api/daily-config'
     res = requests.get(url, headers=make_headers(mac, token), timeout=10)
     data = json.loads(res.text)
     res.close()
@@ -66,7 +66,7 @@ def call_daily_zip(server_url, mac, token, daily_zip_version, dest_path):
     Returns True if new ZIP downloaded, False if already current (304/same version).
     Raises exception on failure.
     """
-    url = server_url + '/daily-zip?version=' + (daily_zip_version or '0')
+    url = server_url + '/api/daily-zip?version=' + (daily_zip_version or '0')
     res = requests.get(url, headers=make_headers(mac, token), timeout=30)
     if res.status_code == 304 or res.status_code == 204:
         res.close()
@@ -88,7 +88,7 @@ def call_refresh(server_url, mac, token, skip=False):
     Returns dict with image_index, current_orientation, sleep_interval.
     Raises exception on failure.
     """
-    url = server_url + '/refresh'
+    url = server_url + '/api/refresh'
     body = json.dumps({'mac': mac, 'skip': skip})
     res = requests.post(url, data=body, headers=make_headers(mac, token), timeout=10)
     data = json.loads(res.text)
@@ -100,7 +100,7 @@ def call_change_orientation(server_url, mac, token, orientation):
     POST /change-orientation
     Notifies server of orientation change.
     """
-    url = server_url + '/change-orientation'
+    url = server_url + '/api/change-orientation'
     body = json.dumps({'mac': mac, 'orientation': orientation})
     try:
         res = requests.post(url, data=body, headers=make_headers(mac, token), timeout=5)
@@ -114,7 +114,7 @@ def call_register(server_url, mac, username, password):
     Registers device using username+password.
     Returns token string on success, or raises.
     """
-    url = server_url + '/register'
+    url = server_url + '/api/register'
     body = json.dumps({'mac': mac, 'username': username, 'password': password})
     res = requests.post(url, data=body, headers={'Content-Type': 'application/json'}, timeout=10)
     data = json.loads(res.text)
