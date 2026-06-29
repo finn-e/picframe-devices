@@ -658,12 +658,12 @@ def run_connected_sequence():
     # /api/daily-zip
     try:
         daily_ver = sd_cfg.get('daily_zip_version', '')
-        new_zip   = call_daily_zip(server_url, mac_str, token, daily_ver, '/sd/daily.zip')
+        new_zip   = call_daily_zip(server_url, mac_str, token, daily_ver, '/daily.zip')
         if new_zip:
             from unzip import extract_zip
             wipe_sd_images()
-            extract_zip('/sd/daily.zip', '/sd')
-            try: os.remove('/sd/daily.zip')
+            extract_zip('/daily.zip', '/sd')
+            try: os.remove('/daily.zip')
             except Exception: pass
             if 'daily_zip_version' in dcfg:
                 sd_cfg['daily_zip_version'] = dcfg['daily_zip_version']
