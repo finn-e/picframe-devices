@@ -111,7 +111,7 @@ def sd_mounted():
 def wipe_sd_images():
     try:
         for f in os.listdir('/sd'):
-            if f.endswith('.py') or f in ('config.json',): continue
+            if not f.endswith('.bin'): continue
             try: os.remove('/sd/' + f)
             except Exception: pass
     except Exception as e:
@@ -658,12 +658,12 @@ def run_connected_sequence():
     # /api/daily-zip
     try:
         daily_ver = sd_cfg.get('daily_zip_version', '')
-        new_zip   = call_daily_zip(server_url, mac_str, token, daily_ver, '/daily.zip')
+        new_zip   = call_daily_zip(server_url, mac_str, token, daily_ver, '/sd/daily.zip')
         if new_zip:
             from unzip import extract_zip
             wipe_sd_images()
-            extract_zip('/daily.zip', '/sd')
-            try: os.remove('/daily.zip')
+            extract_zip('/sd/daily.zip', '/sd')
+            try: os.remove('/sd/daily.zip')
             except Exception: pass
             if 'daily_zip_version' in dcfg:
                 sd_cfg['daily_zip_version'] = dcfg['daily_zip_version']
