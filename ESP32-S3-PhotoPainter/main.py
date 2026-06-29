@@ -12,9 +12,8 @@ import json
 import network
 import ubinascii
 
-# Shut down radios early to save power during boot
+# Shut down AP radio; leave STA alone so boot.py's connection survives
 try:
-    network.WLAN(network.STA_IF).active(False)
     network.WLAN(network.AP_IF).active(False)
 except Exception:
     pass
