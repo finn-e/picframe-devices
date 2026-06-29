@@ -1,91 +1,90 @@
 # ==========================================
-# FILE VERSION: 2.0.0
-# DESCRIPTION: Configuration management. Internal Flash stores infrastructure
-#              parameters only. SD card stores runtime/presentation state.
+# FILE VERSION: 3.0.0
+# DESCRIPTION: Split config architecture.
+#   wifi_config.json  — internal flash, infrastructure + device identity
+#   /sd/config.json   — SD card, runtime presentation state
 # ==========================================
 import json
-import os
 
-# Keys that live exclusively on internal Flash
-FLASH_KEYS = {
+WIFI_CONFIG_PATH = '/wifi_config.json'
+SD_CONFIG_PATH   = '/sd/config.json'
+
+WIFI_KEYS = {
     'ssid', 'password', 'server_url', 'username', 'token',
-    'update_version', 'landscape_flipped', 'portrait_flipped'
+    'landscape_flipped', 'portrait_flipped',
 }
 
-FLASH_CONFIG_PATH = '/config.json'
-SD_CONFIG_PATH = '/sd/config.json'
-
-DEFAULT_FLASH_CONFIG = {
-    'ssid': '',
-    'password': '',
-    'server_url': 'https://picframe.treee.house',
-    'username': '',
-    'token': '',
-    'update_version': '',
-    'landscape_flipped': False,
-    'portrait_flipped': False,
+DEFAULT_WIFI_CONFIG = {
+    'ssid':               '',
+    'password':           '',
+    'server_url':         'https://picframes-server.fly.dev',
+    'username':           '',
+    'token':              '',
+    'landscape_flipped':  False,
+    'portrait_flipped':   False,
 }
 
 DEFAULT_SD_CONFIG = {
-    'orientation': 'landscape',
-    'sleep_interval': 900,
-    'image_index': 0,
+    'orientation':       'landscape',
+    'sleep_interval':    900,
+    'image_index':       0,
     'daily_zip_version': '',
-    'images': [],
+    'images':            [],
 }
 
-def load_flash_config():
-    """Load config from internal Flash. Returns merged with defaults."""
-    cfg = dict(DEFAULT_FLASH_CONFIG)
+
+def load_wifi_config():
+    cfg = dict(DEFAULT_WIFI_CONFIG)
     try:
-        with open(FLASH_CONFIG_PATH, 'r') as f:
+        with open(WIFI_CONFIG_PATH, 'r') as f:
             data = json.load(f)
-        for k in FLASH_KEYS:
+        for k in WIFI_KEYS:
             if k in data:
                 cfg[k] = data[k]
     except Exception as e:
-        print('Flash config load error:', e)
+        print('wifi_config load error:', e)
     return cfg
 
-def save_flash_config(cfg):
-    """Save only Flash-eligible keys to /config.json."""
-    to_save = {k: cfg[k] for k in FLASH_KEYS if k in cfg}
+
+def save_wifi_config(cfg):
+    to_save = {k: cfg[k] for k in WIFI_KEYS if k in cfg}
     try:
-        with open(FLASH_CONFIG_PATH, 'w') as f:
+        with open(WIFI_CONFIG_PATH, 'w') as f:
             json.dump(to_save, f)
-        print('Flash config saved.')
         return True
     except Exception as e:
-        print('Flash config save error:', e)
+        print('wifi_config save error:', e)
         return False
 
+
 def load_sd_config():
-    """Load runtime config from SD card. Returns merged with defaults."""
     cfg = dict(DEFAULT_SD_CONFIG)
     try:
         with open(SD_CONFIG_PATH, 'r') as f:
             data = json.load(f)
-        cfg.update(data)
+        for k, v in data.items():
+            if k not in WIFI_KEYS:
+                cfg[k] = v
     except Exception as e:
         print('SD config load error:', e)
     return cfg
 
+
 def save_sd_config(cfg):
-    """Save runtime state to /sd/config.json. Only SD-eligible keys (not Flash keys)."""
-    to_save = {k: v for k, v in cfg.items() if k not in FLASH_KEYS}
+    to_save = {k: v for k, v in cfg.items() if k not in WIFI_KEYS}
     try:
         with open(SD_CONFIG_PATH, 'w') as f:
             json.dump(to_save, f)
-        print('SD config saved.')
         return True
     except Exception as e:
         print('SD config save error:', e)
         return False
 
-def deep_merge_sd_config(existing, incoming):
-    """Deep merge incoming dict into existing, skipping Flash keys."""
+
+def merge_sd_config(existing, incoming):
+    """Merge incoming dict into existing SD config, ignoring wifi keys."""
     merged = dict(existing)
     for k, v in incoming.items():
-        if k not in FLASH_KEYS:
+        if k not in WIFI_KEYS:
             merged[k] = v
     return merged
