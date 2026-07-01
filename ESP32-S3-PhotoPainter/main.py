@@ -120,7 +120,12 @@ def wipe_sd_images():
 def get_bat_pct():
     try:
         from axp import AXP2101
-        return AXP2101().get_battery_percentage()
+        axp = AXP2101()
+        pct = axp.get_battery_percentage()
+        # Don't trigger the critical banner while charging via USB
+        if pct is not None and pct < 20 and axp.is_usb_connected():
+            return 20
+        return pct
     except Exception:
         return None
 
