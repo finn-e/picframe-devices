@@ -74,7 +74,7 @@ def _render_outlined_text_line_at(buf, text, x_start, y, scale=1, width=800):
     char_w = 5
     spacing = 1
     
-    # 1. Outline pass (white)
+    # 1. Outline pass (black)
     x_off = x_start
     for ch in text:
         glyph = FONT.get(ch.upper(), FONT.get(' ', (0,0,0,0,0)))
@@ -87,10 +87,10 @@ def _render_outlined_text_line_at(buf, text, x_start, y, scale=1, width=800):
                             if ox != 0 or oy != 0:
                                 for sx in range(scale):
                                     for sy in range(scale):
-                                        _set_pixel(buf, x_off + ci*scale + sx + ox, y + ri*scale + sy + oy, COL_WHITE, width)
+                                        _set_pixel(buf, x_off + ci*scale + sx + ox, y + ri*scale + sy + oy, COL_BLACK, width)
         x_off += (char_w + spacing) * scale
 
-    # 2. Body pass (black)
+    # 2. Body pass (white)
     x_off = x_start
     for ch in text:
         glyph = FONT.get(ch.upper(), FONT.get(' ', (0,0,0,0,0)))
@@ -100,7 +100,7 @@ def _render_outlined_text_line_at(buf, text, x_start, y, scale=1, width=800):
                 if col_val & (1 << ri):
                     for sx in range(scale):
                         for sy in range(scale):
-                            _set_pixel(buf, x_off + ci*scale + sx, y + ri*scale + sy, COL_BLACK, width)
+                            _set_pixel(buf, x_off + ci*scale + sx, y + ri*scale + sy, COL_WHITE, width)
         x_off += (char_w + spacing) * scale
 
 def _render_outlined_text_line(buf, text, y, scale=1, x_center=None, width=800):
