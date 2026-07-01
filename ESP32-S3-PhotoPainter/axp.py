@@ -104,7 +104,7 @@ class AXP2101:
     def get_battery_percentage(self):
         try:
             if not self.is_battery_connected():
-                return 0
+                return 100 if self.is_usb_connected() else 0
             val = self.read_reg(0xA4)
             if val > 100:
                 if self.is_usb_connected():

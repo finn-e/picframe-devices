@@ -139,12 +139,22 @@ def _apply_critical_battery_banner(buf):
     msg = 'LOW BATTERY: PLEASE PLUG INTO POWER'
     _render_text_line(buf, msg, BANNER_Y + (BANNER_H - 7) // 2, scale=1, color=COL_WHITE)
 
-def apply_branding_text(buf, battery_pct=None):
-    """Renders 'PicFrames/CONNECTED DISPLAY' at bottom edge."""
-    msg = 'PICFRAMES/CONNECTED DISPLAY'
+def apply_branding_text(buf, battery_pct=None, img_path=None):
+    """Renders image name (or fallback brand text) at bottom edge."""
+    if img_path:
+        base = img_path.split('/')[-1]
+        if base.endswith('.bin'):
+            base = base[:-4]
+        for suffix in ('_l_u', '_l_f', '_p_u', '_p_f', '_l', '_p'):
+            if base.endswith(suffix):
+                base = base[:-len(suffix)]
+                break
+        msg = base.replace('_', ' ').upper().strip()
+    else:
+        msg = 'PICFRAMES'
     y = 480 - 12
     if battery_pct is not None and battery_pct < 20:
-        y = 480 - 26 # Shift up to accommodate the low battery banner underneath
+        y = 480 - 26
     _render_text_line(buf, msg, y, scale=1, color=COL_BLACK)
 
 def _wrap_text(text, max_chars=76):

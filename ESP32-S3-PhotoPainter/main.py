@@ -192,7 +192,7 @@ def render_and_sleep(img_path, orientation, sleep_interval):
         description  = img_cfg.get('description', '')
 
         apply_battery_square(buf, bat_pct)
-        apply_branding_text(buf, bat_pct)
+        apply_branding_text(buf, bat_pct, img_path)
         apply_caption_overlay(buf, img_path, caption_mode, description, 'portrait' in orientation)
 
         tmp_path = '/tmp_render.bin'
