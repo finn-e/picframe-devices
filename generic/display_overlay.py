@@ -155,7 +155,7 @@ def apply_branding_text(buf, battery_pct=None, img_path=None):
     y = 480 - 12
     if battery_pct is not None and battery_pct < 20:
         y = 480 - 26
-    _render_text_line(buf, msg, y, scale=1, color=COL_BLACK)
+    _render_outlined_text_line(buf, msg, y, scale=1)
 
 def _wrap_text(text, max_chars=76):
     words = text.split(' ')
