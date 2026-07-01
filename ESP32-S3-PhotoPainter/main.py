@@ -46,14 +46,18 @@ key_btn  = machine.Pin(4, machine.Pin.IN, machine.Pin.PULL_UP)
 pwr_btn  = machine.Pin(5, machine.Pin.IN, machine.Pin.PULL_DOWN)
 
 time.sleep_ms(100)
-boot_pressed = boot_btn.value() == 0
-key_pressed  = key_btn.value()  == 0
+boot_pressed = boot_btn.value() == 0   # active LOW (PULL_UP, pressed = 0)
+key_pressed  = key_btn.value()  == 0   # active LOW (PULL_UP, pressed = 0)
+pwr_pressed  = pwr_btn.value()  == 1   # active HIGH (PULL_DOWN, pressed = 1)
 if boot_pressed:
     print('BOOT held at startup')
     while boot_btn.value() == 0: time.sleep_ms(10)
 if key_pressed:
     print('KEY held at startup')
     while key_btn.value() == 0: time.sleep_ms(10)
+if pwr_pressed:
+    print('PWR held at startup')
+    while pwr_btn.value() == 1: time.sleep_ms(10)
 
 # ── MAC ───────────────────────────────────────────────────────────────────────
 wlan = network.WLAN(network.STA_IF)
@@ -141,6 +145,17 @@ def go_to_sleep(seconds):
     except Exception as e:
         print('PMIC sleep prep error:', e)
     print('Deep sleeping for', seconds, 's')
+    # Configure GPIO wakeup sources so buttons can wake from deep sleep.
+    # PWR wakes via AXP2101 PMIC hardware (power-key line) — no GPIO config needed.
+    # BOOT (pin 0, active-low) → EXT0 wakeup
+    # KEY  (pin 4, active-low) → EXT1 wakeup
+    try:
+        import esp32
+        machine.wake_on_ext0(pin=machine.Pin(0, machine.Pin.IN, machine.Pin.PULL_UP), level=0)
+        esp32.wake_on_ext1(pins=(machine.Pin(4, machine.Pin.IN, machine.Pin.PULL_UP),),
+                           level=esp32.WAKEUP_ALL_LOW)
+    except Exception as e:
+        print('Wake pin setup failed:', e)
     machine.deepsleep(seconds * 1000)
 
 def _wait_with_buttons(seconds):
@@ -160,6 +175,11 @@ def _check_buttons():
         if key_btn.value() == 0:
             while key_btn.value() == 0: time.sleep_ms(10)
             action_key_skip()
+    if pwr_btn.value() == 1:
+        time.sleep_ms(50)
+        if pwr_btn.value() == 1:
+            while pwr_btn.value() == 1: time.sleep_ms(10)
+            action_pwr_checkin()
 
 def resolve_image_path(basename):
     orientation = sd_cfg.get('orientation', 'landscape')
@@ -598,6 +618,31 @@ def action_key_skip():
         print('Key skip failed:', e)
         go_to_sleep(sd_cfg.get('sleep_interval', 900))
 
+def action_pwr_checkin():
+    """PWR button: reconnect WiFi if needed and run the full server sequence."""
+    print('PWR: forced full server check-in')
+    # Force a fresh daily-zip download regardless of cached version
+    sd_cfg['daily_zip_version'] = ''
+    save_sd_config(sd_cfg)
+
+    if not wlan.isconnected():
+        print('Reconnecting WiFi for PWR check-in...')
+        ssid_v = wifi_cfg.get('ssid', '')
+        pwd_v  = wifi_cfg.get('password', '')
+        if ssid_v:
+            wlan.active(True)
+            if not wlan.isconnected():
+                wlan.connect(ssid_v, pwd_v)
+                deadline = time.time() + 20
+                while not wlan.isconnected() and time.time() < deadline:
+                    time.sleep_ms(300)
+
+    if wlan.isconnected():
+        run_connected_sequence()
+    else:
+        print('WiFi unavailable for PWR check-in — offline fallback')
+        run_offline_fallback()
+
 # ── Offline fallback ──────────────────────────────────────────────────────────
 def run_offline_fallback():
     print('Offline — using SD cache.')
@@ -709,6 +754,9 @@ if boot_pressed:
 
 if key_pressed:
     action_key_skip()
+
+if pwr_pressed:
+    action_pwr_checkin()
 
 ssid = wifi_cfg.get('ssid', '')
 
