@@ -603,7 +603,7 @@ def action_key_skip():
         from api import call_refresh, sync_ntp
         sync_ntp()
         result = call_refresh(wifi_cfg.get('server_url',''), mac_str,
-                              wifi_cfg.get('token',''), skip=True)
+                              wifi_cfg.get('token',''), skip=True, battery=get_bat_pct())
         idx       = result.get('image_index', sd_cfg.get('image_index', 0))
         orient    = result.get('current_orientation', sd_cfg.get('orientation', 'landscape'))
         sleep_int = result.get('sleep_interval', sd_cfg.get('sleep_interval', 900))
@@ -724,7 +724,7 @@ def run_connected_sequence():
 
     # /api/refresh
     try:
-        result    = call_refresh(server_url, mac_str, token, skip=False)
+        result    = call_refresh(server_url, mac_str, token, skip=False, battery=get_bat_pct())
         idx       = result.get('image_index', sd_cfg.get('image_index', 0))
         orient    = result.get('current_orientation', sd_cfg.get('orientation', 'landscape'))
         sleep_int = result.get('sleep_interval', sd_cfg.get('sleep_interval', 900))

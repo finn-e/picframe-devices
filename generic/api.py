@@ -81,15 +81,19 @@ def call_daily_zip(server_url, mac, token, daily_zip_version, dest_path):
     res.close()
     return True
 
-def call_refresh(server_url, mac, token, skip=False):
+def call_refresh(server_url, mac, token, skip=False, battery=None):
     """
     POST /refresh
     skip=True means KEY button was pressed (manual skip).
+    battery=<int 0-100> reports battery percentage; omitted when None.
     Returns dict with image_index, current_orientation, sleep_interval.
     Raises exception on failure.
     """
     url = server_url + '/api/refresh'
-    body = json.dumps({'mac': mac, 'skip': skip})
+    payload = {'mac': mac, 'skip': skip}
+    if battery is not None:
+        payload['battery'] = battery
+    body = json.dumps(payload)
     res = requests.post(url, data=body, headers=make_headers(mac, token), timeout=10)
     data = json.loads(res.text)
     res.close()
