@@ -262,14 +262,22 @@ def _draw_message_screen(lines, orientation='landscape'):
                 buf = bytearray(f.read())
         except Exception:
             buf = bytearray(b'\x11' * 192000)
-        from display_overlay import _render_outlined_text_line, apply_battery_square
+        from display_overlay import (_render_outlined_text_line,
+                                     _render_outlined_text_line_portrait,
+                                     apply_battery_square)
         scale  = 1
         line_h = 13
         total_h = len(lines) * line_h
-        # Position in the bottom 120px band of the 480px screen height
-        y_start = 360 + (120 - total_h) // 2
-        for i, line in enumerate(lines):
-            _render_outlined_text_line(buf, line, y_start + i * line_h, scale=scale)
+        if 'portrait' in orientation:
+            # Bottom 200px band of the 800px-tall portrait view
+            y_start = 600 + (200 - total_h) // 2
+            for i, line in enumerate(lines):
+                _render_outlined_text_line_portrait(buf, line, y_start + i * line_h, scale=scale)
+        else:
+            # Bottom 120px band of the 480px screen height
+            y_start = 360 + (120 - total_h) // 2
+            for i, line in enumerate(lines):
+                _render_outlined_text_line(buf, line, y_start + i * line_h, scale=scale)
         apply_battery_square(buf, get_bat_pct())
         out_path = '/msg_screen.bin'
         with open(out_path, 'wb') as f: f.write(buf)
@@ -725,14 +733,15 @@ def run_offline_fallback():
         start_ap_and_portal(reason='wifi_failed')
         return
     try:
-        ip = wlan.ifconfig()[0]
-        hostname = 'picframe-' + mac_str.replace(':', '')[-8:].lower()
+        server_host = wifi_cfg.get('server_url', 'https://picframes.treee.house')
+        for prefix in ('https://', 'http://'):
+            if server_host.startswith(prefix):
+                server_host = server_host[len(prefix):]
         _draw_message_screen([
             'NO IMAGES CACHED',
             '',
-            'TO RECONFIGURE VISIT:',
-            'http://' + ip + '/',
-            'http://' + hostname + '.local/',
+            'TO ADD PICS VISIT:',
+            server_host[:44],
         ], orient)
     except Exception as e:
         print('Offline screen draw failed:', e)

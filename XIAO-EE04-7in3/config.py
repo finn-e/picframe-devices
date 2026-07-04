@@ -82,9 +82,13 @@ def save_sd_config(cfg):
 
 
 def merge_sd_config(existing, incoming):
-    """Merge incoming dict into existing config, ignoring wifi keys."""
+    """Merge incoming dict into existing config, ignoring wifi keys.
+    daily_zip_version is also excluded: adopting the server's version here
+    would make the subsequent daily-zip request report "already current"
+    (304) before the zip was ever downloaded. It is saved explicitly after
+    a successful download + extraction instead."""
     merged = dict(existing)
     for k, v in incoming.items():
-        if k not in WIFI_KEYS:
+        if k not in WIFI_KEYS and k != 'daily_zip_version':
             merged[k] = v
     return merged

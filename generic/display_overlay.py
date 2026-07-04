@@ -113,6 +113,38 @@ def _render_outlined_text_line(buf, text, y, scale=1, x_center=None, width=800):
         x_start = max(0, x_center - total_w // 2)
     _render_outlined_text_line_at(buf, text, x_start, y, scale, width)
 
+def _set_pixel_portrait(buf, vx, vy, color, width=800):
+    # Visual portrait coords (480 wide x 800 tall) onto the physical 800x480
+    # landscape buffer, matching the server's 270-degree portrait packing:
+    # visual (vx, vy) -> physical (width-1-vy, vx).
+    _set_pixel(buf, width - 1 - vy, vx, color, width)
+
+def _render_outlined_text_line_portrait(buf, text, vy, scale=1, vx_center=None, width=800):
+    """Like _render_outlined_text_line but for portrait-packed buffers.
+    vy is the visual row (0..799, top of the portrait view = 0)."""
+    char_w  = 5
+    spacing = 1
+    total_w = len(text) * (char_w + spacing) * scale
+    if vx_center is None:
+        vx_start = max(0, (480 - total_w) // 2)
+    else:
+        vx_start = max(0, vx_center - total_w // 2)
+    outline = [(ox, oy) for ox in (-1, 0, 1) for oy in (-1, 0, 1) if ox or oy]
+    for color, offsets in ((COL_WHITE, outline), (COL_BLACK, [(0, 0)])):
+        vx_off = vx_start
+        for ch in text:
+            glyph = FONT.get(ch.upper(), FONT.get(' ', (0, 0, 0, 0, 0)))
+            for ci in range(5):
+                col_val = glyph[ci]
+                for ri in range(7):
+                    if col_val & (1 << ri):
+                        for ox, oy in offsets:
+                            for sx in range(scale):
+                                for sy in range(scale):
+                                    _set_pixel_portrait(buf, vx_off + ci*scale + sx + ox,
+                                                        vy + ri*scale + sy + oy, color, width)
+            vx_off += (char_w + spacing) * scale
+
 def apply_battery_square(buf, battery_pct):
     """Renders a solid colored square 4px from bottom-right."""
     if battery_pct is None:
