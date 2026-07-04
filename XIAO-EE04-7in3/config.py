@@ -1,13 +1,13 @@
 # ==========================================
-# FILE VERSION: 3.0.0
-# DESCRIPTION: Split config architecture.
+# FILE VERSION: 1.0.0
+# DESCRIPTION: Split config architecture for XIAO EE04 devices.
 #   wifi_config.json  — internal flash, infrastructure + device identity
-#   /sd/config.json   — SD card, runtime presentation state
+#   /images/config.json — internal flash (no SD card on EE04), runtime state
 # ==========================================
 import json
 
-WIFI_CONFIG_PATH = '/wifi_config.json'
-SD_CONFIG_PATH   = '/sd/config.json'
+WIFI_CONFIG_PATH   = '/wifi_config.json'
+SD_CONFIG_PATH     = '/images/config.json'   # "SD" misnomer kept for API compat
 
 WIFI_KEYS = {
     'ssid', 'password', 'server_url', 'username', 'token',
@@ -66,7 +66,7 @@ def load_sd_config():
             if k not in WIFI_KEYS:
                 cfg[k] = v
     except Exception as e:
-        print('SD config load error:', e)
+        print('images config load error:', e)
     return cfg
 
 
@@ -77,12 +77,12 @@ def save_sd_config(cfg):
             json.dump(to_save, f)
         return True
     except Exception as e:
-        print('SD config save error:', e)
+        print('images config save error:', e)
         return False
 
 
 def merge_sd_config(existing, incoming):
-    """Merge incoming dict into existing SD config, ignoring wifi keys."""
+    """Merge incoming dict into existing config, ignoring wifi keys."""
     merged = dict(existing)
     for k, v in incoming.items():
         if k not in WIFI_KEYS:

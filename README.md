@@ -2,7 +2,13 @@
 
 Open-source MicroPython firmware for the **PicFrames** e-ink photo frame ecosystem.
 
-Current hardware target: **Waveshare ESP32-S3-PhotoPainter** (7.3" 6-color Spectra display)
+Hardware targets:
+
+| Directory | Board | Panel | Notes |
+|-----------|-------|-------|-------|
+| `ESP32-S3-PhotoPainter/` | Waveshare ESP32-S3-PhotoPainter | 7.3" 6-color Spectra, 800×480 | SD card + AXP2101 PMIC |
+| `XIAO-EE04-7in3/` | Seeed XIAO ESP32-S3 | 7.3" Spectra 6, 800×480 | No SD, no PMIC — images cached in `/images/` on internal flash |
+| `XIAO-EE04-13in3/` | Seeed XIAO ESP32-S3 | 13.3" Spectra 6, 1200×1600 dual-controller | Server-side 1200×1600 asset pipeline not implemented yet |
 
 ## Repository Structure
 
@@ -13,15 +19,14 @@ picframe-devices/
 │   ├── config.py               # Flash/SD config architecture
 │   ├── display_overlay.py      # Battery indicator, branding overlays
 │   └── update.py               # OTA update handler
-├── ESP32-S3-PhotoPainter/      # Platform-specific firmware
-│   ├── axp.py                  # AXP2101 PMIC driver
-│   ├── boot.py                 # Bootloader (SD mount, PMIC init)
-│   ├── epd.py                  # E-paper display driver
-│   ├── main.py                 # Main application loop
-│   └── unzip.py                # ZIP extractor for OTA
+├── ESP32-S3-PhotoPainter/      # Board-specific firmware (see table above;
+├── XIAO-EE04-7in3/             #   each dir carries its own boot.py, main.py,
+├── XIAO-EE04-13in3/            #   epd.py, api.py, config.py, unzip.py)
+├── deploy_xiao.py              # USB deploy of XIAO-EE04-7in3/ via mpremote
 ├── tools/
 │   ├── convert_assets.py       # Image → 4-binary-permutation converter
-│   └── install.py              # Cross-platform firmware installer
+│   ├── install.py              # Cross-platform firmware installer
+│   └── *.bin                   # MicroPython firmware images per board
 └── .github/workflows/
     └── release.yml             # Automated release packaging
 ```
@@ -52,20 +57,34 @@ picframe-devices/
 ## Boot Flow
 
 ```
-Boot
-├── SD mount → if missing: show setup screen (Flash only) + start AP
+boot.py
 ├── Read Flash config
-│   └── if no WiFi: bootstrap AP portal
-└── Connect WiFi
-    ├── if failed: offline fallback (SD cached image → sleep)
-    └── Connected:
-        ├── NTP sync
-        ├── GET /update   → if newer: download ZIP, sync Flash, reboot
-        ├── GET /daily-config → deep merge into SD config
-        ├── GET /daily-zip → if newer: wipe SD images, extract new ZIP
-        ├── POST /refresh → get image_index + orientation + sleep_interval
-        └── Render image (battery overlay + branding) → deep sleep
+│   └── if no WiFi creds: main.py starts the AP captive portal
+├── Connect WiFi (retries with radio reset — recovers from
+│   "Wifi Internal State Error" left by AP mode / soft reboots)
+└── POST /api/register (username + user password, or existing device token)
+    └── stores the returned device token in Flash config
+
+main.py
+├── WiFi failed?
+│   ├── cached image available → render it, sleep (transient outage)
+│   └── nothing cached → re-open the setup AP with an error banner
+├── Server unreachable / 401/403 → on-screen message + reconfigure portal
+└── Connected:
+    ├── NTP sync
+    ├── GET /api/update      → if newer firmware: download ZIP, apply, reboot
+    ├── GET /api/daily-config → merge into SD//images/ config
+    ├── GET /api/daily-zip   → if newer: wipe cached images, extract new ZIP
+    ├── POST /api/refresh    → image_index + orientation + sleep_interval
+    └── Render image (battery overlay + branding) → deep sleep
 ```
+
+All device API calls send `X-Device-Mac` and `X-Device-Token` headers; the
+token is issued by `/api/register` and stored in Flash config. Non-200
+responses are raised as errors (falling back to the offline/reconfigure path).
+The captive portal reads the full HTTP request (Content-Length aware) and
+disables the STA interface while the AP runs, so weak/flaky setup APs and
+truncated passwords are fixed as of 2026-07-04.
 
 ## Hardware Buttons
 

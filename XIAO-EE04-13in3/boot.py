@@ -1,7 +1,7 @@
 # ==========================================
-# FILE VERSION: 2.0.0
-# DESCRIPTION: Bootloader — mounts SD, connects WiFi, registers device,
-#              then hands off to main.py. No AP portal here.
+# FILE VERSION: 1.0.0
+# DESCRIPTION: Bootloader for XIAO EE04 devices — no SD card, no PMIC.
+#   Ensures /images/ directory exists, connects WiFi, registers device token.
 # ==========================================
 import machine
 import os
@@ -9,52 +9,33 @@ import network
 import json
 import time
 
-print('--- Frame bootup ---')
+print('--- EE04 Frame bootup ---')
 
-# ── Safety wait (10 s) — hold BOOT to skip ────────────────────────────────────
-_boot_pin = machine.Pin(0, machine.Pin.IN, machine.Pin.PULL_UP)
+# ── Safety wait (10 s) — hold KEY1 (GPIO2) to skip ───────────────────────────
+_boot_pin = machine.Pin(2, machine.Pin.IN, machine.Pin.PULL_UP)
 for _i in range(10, 0, -1):
     if _boot_pin.value() == 0:
-        print('BOOT held — skipping safety wait')
+        print('KEY1 held — skipping safety wait')
         break
-    print('Safety wait: {}s (hold BOOT to skip)'.format(_i))
+    print('Safety wait: {}s (hold KEY1 to skip)'.format(_i))
     time.sleep(1)
 del _boot_pin, _i
 
-# ── PMIC ──────────────────────────────────────────────────────────────────────
+# ── Ensure /images/ directory exists ──────────────────────────────────────────
 try:
-    print('Initializing AXP2101 PMIC...')
-    from axp import AXP2101
-    AXP2101().init()
-    print('PMIC initialized.')
-except Exception as e:
-    print('PMIC initialization failed:', e)
-
-# ── SD card ───────────────────────────────────────────────────────────────────
-sd_mounted = False
-for attempt in range(5):
+    os.stat('/images')
+except OSError:
     try:
-        sd = machine.SDCard(
-            slot=1, width=4, sck=machine.Pin(39), cmd=machine.Pin(41),
-            data=(machine.Pin(40), machine.Pin(1), machine.Pin(2), machine.Pin(38))
-        )
-        os.mount(sd, '/sd')
-        print('SD card mounted at /sd')
-        sd_mounted = True
-        break
+        os.mkdir('/images')
+        print('/images directory created.')
     except Exception as e:
-        print('SD mount attempt {} failed: {}'.format(attempt + 1, e))
-        time.sleep_ms(200)
-
-if not sd_mounted:
-    print('SD mount failed — continuing without SD.')
+        print('Failed to create /images directory:', e)
 
 # ── WiFi config ───────────────────────────────────────────────────────────────
 try:
     from config import load_wifi_config, save_wifi_config
 except Exception as e:
     print('Config module failed:', e)
-    # Minimal fallback so boot doesn't crash
     def load_wifi_config():
         try:
             with open('/wifi_config.json') as f:
@@ -75,7 +56,6 @@ password = wifi_cfg.get('password', '')
 if not ssid:
     print('No WiFi credentials — main.py will handle setup.')
 else:
-    # ── Connect WiFi ──────────────────────────────────────────────────────────
     import ubinascii
     network.WLAN(network.AP_IF).active(False)
     wlan = network.WLAN(network.STA_IF)
@@ -103,7 +83,6 @@ else:
     if wlan.isconnected():
         print('WiFi connected:', wlan.ifconfig())
 
-        # ── Register / refresh device token ───────────────────────────────────
         mac_bytes = wlan.config('mac')
         mac_str   = ubinascii.hexlify(mac_bytes, ':').decode()
 
@@ -114,7 +93,6 @@ else:
 
         try:
             import urequests
-            # On first boot token is empty — authenticate with admin password instead
             auth = token if token else admin_password
             body = json.dumps({'mac': mac_str, 'username': username, 'password': auth})
             res  = urequests.post(

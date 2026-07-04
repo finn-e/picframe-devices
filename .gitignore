@@ -1,6 +1,8 @@
 # Ignore large tool dependencies/unzipped sources
 tools/xiaozhi_src/
 tools/micropython_firmware.bin
+latest_release/
+latest_release.zip
 __pycache__/
 *.pyc
 *.zip

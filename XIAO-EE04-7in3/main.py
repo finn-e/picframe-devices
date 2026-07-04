@@ -1,9 +1,11 @@
 # ==========================================
-# FILE VERSION: 3.0.0
-# DESCRIPTION: Main slideshow loop for ESP32-S3-PhotoPainter.
+# FILE VERSION: 1.0.0
+# DESCRIPTION: Main slideshow loop for XIAO EE04 + 7.3" Spectra 6.
 #   Flow: check WiFi → check server → /api/update → /api/daily-config →
 #         /api/daily-zip → /api/refresh → render → sleep
 #   Falls back to AP captive portal when WiFi or server is unreachable.
+#   Images stored in /images/ (internal flash, no SD card).
+#   Buttons: KEY1(GPIO2)=check-in, KEY2(GPIO3)=orientation, KEY3(GPIO5)=skip.
 # ==========================================
 import time
 import machine
@@ -12,7 +14,6 @@ import json
 import network
 import ubinascii
 
-# Shut down AP radio; leave STA alone so boot.py's connection survives
 try:
     network.WLAN(network.AP_IF).active(False)
 except Exception:
@@ -20,15 +21,10 @@ except Exception:
 
 
 def hard_reboot():
-    print('Hard reboot...')
+    print('Hard reboot via WDT...')
     try:
         network.WLAN(network.STA_IF).active(False)
         network.WLAN(network.AP_IF).active(False)
-    except Exception:
-        pass
-    try:
-        from axp import AXP2101
-        AXP2101().reboot()
     except Exception:
         pass
     try:
@@ -52,26 +48,49 @@ def soft_reboot():
     machine.soft_reset()
 
 
-print('--- PicFrame v3.0 starting ---')
+print('--- PicFrame EE04-7in3 v1.0 starting ---')
 
-# ── Buttons ───────────────────────────────────────────────────────────────────
-boot_btn = machine.Pin(0, machine.Pin.IN, machine.Pin.PULL_UP)
-key_btn  = machine.Pin(4, machine.Pin.IN, machine.Pin.PULL_UP)
-pwr_btn  = machine.Pin(5, machine.Pin.IN, machine.Pin.PULL_DOWN)
+# ── Buttons (all active-low, PULL_UP) ────────────────────────────────────────
+# KEY1 = GPIO2  → full server check-in (PWR equivalent)
+# KEY2 = GPIO3  → toggle orientation
+# KEY3 = GPIO5  → skip to next image
+key1_btn = machine.Pin(2, machine.Pin.IN, machine.Pin.PULL_UP)
+key2_btn = machine.Pin(3, machine.Pin.IN, machine.Pin.PULL_UP)
+key3_btn = machine.Pin(5, machine.Pin.IN, machine.Pin.PULL_UP)
+
+# ── Deep-sleep wake-cause routing ────────────────────────────────────────────
+# KEY1 (GPIO2) wakes via ext0 → run full server check-in.
+# KEY2 (GPIO3) wakes via ext1 → toggle orientation.
+# KEY3 (GPIO5) has no deep-sleep wake source (see go_to_sleep); skip works
+# while awake (startup press or USB-simulated sleep).
+# A wake press is usually released before main.py samples the pins, so we
+# route on machine.wake_reason() rather than on the live pin level alone.
+wake_key1 = False
+wake_key2 = False
+try:
+    _wr = machine.wake_reason()
+    if _wr == machine.EXT0_WAKE:
+        print('Woken by KEY1 (ext0) — will run full check-in')
+        wake_key1 = True
+    elif _wr == machine.EXT1_WAKE:
+        print('Woken by KEY2 (ext1) — will toggle orientation')
+        wake_key2 = True
+except Exception as e:
+    print('wake_reason check failed:', e)
 
 time.sleep_ms(100)
-boot_pressed = boot_btn.value() == 0   # active LOW (PULL_UP, pressed = 0)
-key_pressed  = key_btn.value()  == 0   # active LOW (PULL_UP, pressed = 0)
-pwr_pressed  = pwr_btn.value()  == 1   # active HIGH (PULL_DOWN, pressed = 1)
-if boot_pressed:
-    print('BOOT held at startup')
-    while boot_btn.value() == 0: time.sleep_ms(10)
-if key_pressed:
-    print('KEY held at startup')
-    while key_btn.value() == 0: time.sleep_ms(10)
-if pwr_pressed:
-    print('PWR held at startup')
-    while pwr_btn.value() == 1: time.sleep_ms(10)
+key1_pressed = wake_key1 or key1_btn.value() == 0
+key2_pressed = wake_key2 or key2_btn.value() == 0
+key3_pressed = key3_btn.value() == 0
+if key1_pressed:
+    print('KEY1 held at startup')
+    while key1_btn.value() == 0: time.sleep_ms(10)
+if key2_pressed:
+    print('KEY2 held at startup')
+    while key2_btn.value() == 0: time.sleep_ms(10)
+if key3_pressed:
+    print('KEY3 held at startup')
+    while key3_btn.value() == 0: time.sleep_ms(10)
 
 # ── MAC ───────────────────────────────────────────────────────────────────────
 wlan = network.WLAN(network.STA_IF)
@@ -82,7 +101,7 @@ print('Device MAC:', mac_str)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 import sys
-sys.path.insert(0, '/sd')
+sys.path.insert(0, '/images')
 sys.path.insert(1, '/')
 
 try:
@@ -104,69 +123,67 @@ except Exception as e:
         except Exception: pass
     def load_sd_config():
         try:
-            with open('/sd/config.json') as f: return json.load(f)
+            with open('/images/config.json') as f: return json.load(f)
         except Exception:
             return {'orientation':'landscape','sleep_interval':900,'image_index':0,
                     'daily_zip_version':'','images':[]}
     def save_sd_config(c):
         try:
-            with open('/sd/config.json','w') as f: json.dump(c,f)
+            with open('/images/config.json','w') as f: json.dump(c,f)
         except Exception: pass
     def merge_sd_config(a, b):
         m = dict(a); m.update({k:v for k,v in b.items() if k not in
-            {'ssid','password','server_url','username','token','landscape_flipped','portrait_flipped'}}); return m
+            {'ssid','password','server_url','username','token',
+             'landscape_flipped','portrait_flipped'}}); return m
 
 wifi_cfg = load_wifi_config()
 sd_cfg   = load_sd_config()
 
-HW_PROFILE = 'ESP32-S3-PhotoPainter'
+HW_PROFILE = 'XIAO-EE04-7in3'
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-def sd_mounted():
-    try: os.stat('/sd'); return True
-    except OSError: return False
-
-def wipe_sd_images():
+def wipe_images():
     try:
-        for f in os.listdir('/sd'):
+        for f in os.listdir('/images'):
             if not f.endswith('.bin'): continue
-            try: os.remove('/sd/' + f)
+            try: os.remove('/images/' + f)
             except Exception: pass
     except Exception as e:
-        print('SD wipe error:', e)
+        print('Image wipe error:', e)
 
 def get_bat_pct():
     try:
-        from axp import AXP2101
-        axp = AXP2101()
-        pct = axp.get_battery_percentage()
-        # Don't trigger the critical banner while charging via USB
-        if pct is not None and pct < 20 and axp.is_usb_connected():
+        from battery import get_battery_percentage, is_usb_connected
+        pct = get_battery_percentage()
+        if pct is not None and pct < 20 and is_usb_connected():
             return 20
         return pct
     except Exception:
         return None
 
 def go_to_sleep(seconds):
+    # No PMIC — check USB via battery module (always False on EE04; see battery.py)
     try:
-        from axp import AXP2101
-        axp = AXP2101()
-        if axp.is_usb_connected():
+        from battery import is_usb_connected
+        if is_usb_connected():
             print('USB connected — simulating sleep for', seconds, 's')
             _wait_with_buttons(seconds)
             return
-        axp.disable_power()
     except Exception as e:
-        print('PMIC sleep prep error:', e)
+        print('battery check error:', e)
+
     print('Deep sleeping for', seconds, 's')
-    # Configure GPIO wakeup sources so buttons can wake from deep sleep.
-    # PWR wakes via AXP2101 PMIC hardware (power-key line) — no GPIO config needed.
-    # BOOT (pin 0, active-low) → EXT0 wakeup
-    # KEY  (pin 4, active-low) → EXT1 wakeup
+    # Wake sources:
+    #   KEY1 (GPIO2, active-low) → ext0, level=0        — wakes on any press
+    #   KEY2 (GPIO3, active-low) → ext1 single-pin, WAKEUP_ALL_LOW — wakes on press
+    #   KEY3 (GPIO5) is NOT registered as a wakeup source because ESP32-S3 ext1
+    #   with WAKEUP_ALL_LOW on multiple pins requires ALL listed pins low simultaneously
+    #   (i.e. all pressed at once), which is not useful for independent buttons.
+    #   KEY3 still works during USB-simulated sleep via _wait_with_buttons().
     try:
         import esp32
-        machine.wake_on_ext0(pin=machine.Pin(0, machine.Pin.IN, machine.Pin.PULL_UP), level=0)
-        esp32.wake_on_ext1(pins=(machine.Pin(4, machine.Pin.IN, machine.Pin.PULL_UP),),
+        machine.wake_on_ext0(pin=machine.Pin(2, machine.Pin.IN, machine.Pin.PULL_UP), level=0)
+        esp32.wake_on_ext1(pins=(machine.Pin(3, machine.Pin.IN, machine.Pin.PULL_UP),),
                            level=esp32.WAKEUP_ALL_LOW)
     except Exception as e:
         print('Wake pin setup failed:', e)
@@ -179,41 +196,36 @@ def _wait_with_buttons(seconds):
         time.sleep_ms(50)
 
 def _check_buttons():
-    if boot_btn.value() == 0:
+    if key1_btn.value() == 0:
         time.sleep_ms(50)
-        if boot_btn.value() == 0:
-            while boot_btn.value() == 0: time.sleep_ms(10)
-            action_toggle_orientation()
-    if key_btn.value() == 0:
-        time.sleep_ms(50)
-        if key_btn.value() == 0:
-            while key_btn.value() == 0: time.sleep_ms(10)
-            action_key_skip()
-    if pwr_btn.value() == 1:
-        time.sleep_ms(50)
-        if pwr_btn.value() == 1:
-            while pwr_btn.value() == 1: time.sleep_ms(10)
+        if key1_btn.value() == 0:
+            while key1_btn.value() == 0: time.sleep_ms(10)
             action_pwr_checkin()
+    if key2_btn.value() == 0:
+        time.sleep_ms(50)
+        if key2_btn.value() == 0:
+            while key2_btn.value() == 0: time.sleep_ms(10)
+            action_toggle_orientation()
+    if key3_btn.value() == 0:
+        time.sleep_ms(50)
+        if key3_btn.value() == 0:
+            while key3_btn.value() == 0: time.sleep_ms(10)
+            action_key_skip()
 
 def resolve_image_path(basename):
     orientation = sd_cfg.get('orientation', 'landscape')
     suffix = '_l.bin' if 'landscape' in orientation else '_p.bin'
-    return '/sd/' + basename + suffix
+    return '/images/' + basename + suffix
 
 # ── Display ───────────────────────────────────────────────────────────────────
 def render_and_sleep(img_path, orientation, sleep_interval):
-    try:
-        from axp import AXP2101
-        AXP2101().init()
-    except Exception:
-        pass
     try:
         network.WLAN(network.STA_IF).active(False)
     except Exception:
         pass
     bat_pct = get_bat_pct()
     try:
-        from display_overlay import apply_battery_square, apply_branding_text, apply_caption_overlay, apply_debug_overlay
+        from display_overlay import apply_battery_square, apply_branding_text, apply_caption_overlay
         buf = bytearray(192000)
         with open(img_path, 'rb') as f:
             f.readinto(buf)
@@ -250,11 +262,6 @@ def render_and_sleep(img_path, orientation, sleep_interval):
 
 def _draw_message_screen(lines, orientation='landscape'):
     """Draw text lines on the EPD using logo background or white fallback buffer."""
-    try:
-        from axp import AXP2101
-        AXP2101().init()
-    except Exception:
-        pass
     try:
         logo_file = '/picframes_logo_l.bin' if 'landscape' in orientation else '/picframes_logo_p.bin'
         try:
@@ -319,8 +326,6 @@ def recv_http_request(conn):
             break
         body += chunk
     return (head + b'\r\n\r\n' + body).decode('utf-8', 'ignore')
-
-
 
 ap_active = False
 
@@ -464,11 +469,11 @@ def start_ap_and_portal(reason='setup'):
                     if '=' in kv:
                         k, v = kv.split('=', 1)
                         p[k] = re_url_decode(v)
-                ssid_v      = p.get('ssid', '').strip()
-                wifi_pass_v = p.get('wifi_pass', '').strip()
-                server_url_v= p.get('server_url', '').strip() or 'https://picframes.treee.house'
-                username_v  = p.get('username', '').strip()
-                token_v     = p.get('token', '').strip()
+                ssid_v       = p.get('ssid', '').strip()
+                wifi_pass_v  = p.get('wifi_pass', '').strip()
+                server_url_v = p.get('server_url', '').strip() or 'https://picframes.treee.house'
+                username_v   = p.get('username', '').strip()
+                token_v      = p.get('token', '').strip()
                 if ssid_v:
                     wifi_cfg['ssid']       = ssid_v
                     wifi_cfg['password']   = wifi_pass_v
@@ -518,8 +523,6 @@ RECONFIG_HTML = """<!DOCTYPE html>
         background:linear-gradient(135deg,hsl(190,100%,55%),hsl(260,90%,65%));
         -webkit-background-clip:text;-webkit-text-fill-color:transparent;text-align:center}}
     .sub{{text-align:center;color:#64748b;font-size:.85rem;margin-bottom:20px}}
-    .err{{color:hsl(0,85%,65%);background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.2);
-          padding:10px;border-radius:8px;margin-bottom:14px;font-size:.82rem;text-align:center}}
     label{{display:block;font-size:.82rem;color:#94a3b8;margin-bottom:4px;font-weight:500}}
     .ig{{margin-bottom:14px}}
     input[type=text],input[type=password]{{width:100%;padding:10px 12px;
@@ -551,33 +554,21 @@ RECONFIG_HTML = """<!DOCTYPE html>
 </div></body></html>"""
 
 def start_sta_reconfigure_portal():
-    """Web server on the existing STA WiFi connection for server reconfiguration."""
     global wifi_cfg
     import socket
-
-    dev_id = mac_str.replace(':', '')[-8:].upper()
-    ip = wlan.ifconfig()[0]
-
-    # Set mDNS hostname so device is reachable as picframe-XXXX.local
+    dev_id   = mac_str.replace(':', '')[-8:].upper()
+    ip       = wlan.ifconfig()[0]
     hostname = 'picframe-' + mac_str.replace(':', '')[-8:].lower()
     try:
         network.hostname(hostname)
         print('mDNS hostname:', hostname + '.local')
     except Exception as e:
         print('hostname set failed:', e)
-
     print('=== RECONFIGURE MODE ===')
-    print('Connect to same WiFi network and visit:')
-    print('  http://{}/'.format(ip))
-    print('  http://{}.local/'.format(hostname))
-    print('========================')
-
+    print('Connect to same WiFi and visit http://{}/'.format(ip))
     s = socket.socket()
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    s.bind(('', 80))
-    s.listen(1)
-    s.settimeout(0.2)
-
+    s.bind(('', 80)); s.listen(1); s.settimeout(0.2)
     while True:
         try:
             conn, addr = s.accept()
@@ -586,7 +577,6 @@ def start_sta_reconfigure_portal():
             first = lines[0].split(' ') if lines else []
             method = first[0] if first else ''
             path   = first[1] if len(first) > 1 else '/'
-
             if method == 'POST' and '/save' in path:
                 body = req.split('\r\n\r\n', 1)[-1]
                 p = {}
@@ -594,13 +584,10 @@ def start_sta_reconfigure_portal():
                     if '=' in kv:
                         k, v = kv.split('=', 1)
                         p[k] = re_url_decode(v)
-                server_url_v = p.get('server_url', '').strip() or wifi_cfg.get('server_url', '')
-                username_v   = p.get('username', '').strip()
-                token_v      = p.get('token', '').strip()
-                wifi_cfg['server_url'] = server_url_v
-                wifi_cfg['username']   = username_v
-                if token_v:
-                    wifi_cfg['token'] = token_v
+                wifi_cfg['server_url'] = p.get('server_url', '').strip() or wifi_cfg.get('server_url', '')
+                wifi_cfg['username']   = p.get('username', '').strip()
+                if p.get('token', '').strip():
+                    wifi_cfg['token'] = p['token'].strip()
                 save_wifi_config(wifi_cfg)
                 resp_body = '<html><body><h2>Saved! Rebooting...</h2></body></html>'
                 conn.send(('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n'
@@ -616,14 +603,13 @@ def start_sta_reconfigure_portal():
                     username=escape_html(wifi_cfg.get('username', '')),
                 )
                 conn.send('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n')
-                conn.send(html)
-                conn.close()
+                conn.send(html); conn.close()
         except OSError:
             pass
 
 # ── Button actions ────────────────────────────────────────────────────────────
 def action_toggle_orientation():
-    print('BOOT: toggling orientation')
+    print('KEY2: toggling orientation')
     cur = sd_cfg.get('orientation', 'landscape')
     cycle = {
         'landscape': 'portrait',
@@ -646,7 +632,7 @@ def action_toggle_orientation():
     hard_reboot()
 
 def action_key_skip():
-    print('KEY: requesting image skip')
+    print('KEY3: requesting image skip')
     try:
         from api import call_refresh, sync_ntp
         sync_ntp()
@@ -667,14 +653,11 @@ def action_key_skip():
         go_to_sleep(sd_cfg.get('sleep_interval', 900))
 
 def action_pwr_checkin():
-    """PWR button: reconnect WiFi if needed and run the full server sequence."""
-    print('PWR: forced full server check-in')
-    # Force a fresh daily-zip download regardless of cached version
+    """KEY1: reconnect WiFi if needed and run the full server sequence."""
+    print('KEY1: forced full server check-in')
     sd_cfg['daily_zip_version'] = ''
     save_sd_config(sd_cfg)
-
     if not wlan.isconnected():
-        print('Reconnecting WiFi for PWR check-in...')
         ssid_v = wifi_cfg.get('ssid', '')
         pwd_v  = wifi_cfg.get('password', '')
         if ssid_v:
@@ -684,16 +667,15 @@ def action_pwr_checkin():
                 deadline = time.time() + 20
                 while not wlan.isconnected() and time.time() < deadline:
                     time.sleep_ms(300)
-
     if wlan.isconnected():
         run_connected_sequence()
     else:
-        print('WiFi unavailable for PWR check-in — offline fallback')
+        print('WiFi unavailable for KEY1 check-in — offline fallback')
         run_offline_fallback()
 
 # ── Offline fallback ──────────────────────────────────────────────────────────
 def run_offline_fallback():
-    print('Offline — using SD cache.')
+    print('Offline — using /images/ cache.')
     images    = sd_cfg.get('images', [])
     idx       = sd_cfg.get('image_index', 0)
     orient    = sd_cfg.get('orientation', 'landscape')
@@ -749,7 +731,6 @@ def run_connected_sequence():
 
     sync_ntp()
 
-    # /api/update
     try:
         zip_url = call_update(server_url, mac_str, token, HW_PROFILE, update_ver)
         if zip_url:
@@ -762,10 +743,8 @@ def run_connected_sequence():
         print('/api/update failed:', e)
         run_offline_fallback(); return
 
-    # /api/daily-config
     try:
         dcfg = call_daily_config(server_url, mac_str, token)
-        # Sync flip flags from server into wifi_config if they changed
         changed = False
         for key in ('landscape_flipped', 'portrait_flipped'):
             server_val = bool(dcfg.get(key, False))
@@ -774,7 +753,6 @@ def run_connected_sequence():
                 changed = True
         if changed:
             save_wifi_config(wifi_cfg)
-            print('Flip flags updated from server.')
         merged = merge_sd_config(sd_cfg, dcfg)
         save_sd_config(merged)
         sd_cfg.update(merged)
@@ -782,15 +760,14 @@ def run_connected_sequence():
         print('/api/daily-config failed:', e)
         run_offline_fallback(); return
 
-    # /api/daily-zip
     try:
         daily_ver = sd_cfg.get('daily_zip_version', '')
-        new_zip   = call_daily_zip(server_url, mac_str, token, daily_ver, '/sd/daily.zip')
+        new_zip   = call_daily_zip(server_url, mac_str, token, daily_ver, '/images/daily.zip')
         if new_zip:
             from unzip import extract_zip
-            wipe_sd_images()
-            extract_zip('/sd/daily.zip', '/sd')
-            try: os.remove('/sd/daily.zip')
+            wipe_images()
+            extract_zip('/images/daily.zip', '/images')
+            try: os.remove('/images/daily.zip')
             except Exception: pass
             if 'daily_zip_version' in dcfg:
                 sd_cfg['daily_zip_version'] = dcfg['daily_zip_version']
@@ -799,7 +776,6 @@ def run_connected_sequence():
         print('/api/daily-zip failed:', e)
         run_offline_fallback(); return
 
-    # /api/refresh
     try:
         result    = call_refresh(server_url, mac_str, token, skip=False, battery=get_bat_pct())
         idx       = result.get('image_index', sd_cfg.get('image_index', 0))
@@ -811,14 +787,13 @@ def run_connected_sequence():
         print('/api/refresh failed:', e)
         run_offline_fallback(); return
 
-    # Render
     images = sd_cfg.get('images', [])
     if images and idx < len(images):
         img_path = resolve_image_path(images[idx])
         try:
             os.stat(img_path)
         except OSError:
-            print('Image not on SD:', img_path)
+            print('Image not in /images:', img_path)
             run_offline_fallback(); return
         render_and_sleep(img_path, orient, sleep_int)
     else:
@@ -826,14 +801,14 @@ def run_connected_sequence():
         go_to_sleep(sd_cfg.get('sleep_interval', 900))
 
 # ── Entry point ───────────────────────────────────────────────────────────────
-if boot_pressed:
+if key1_pressed:
+    action_pwr_checkin()
+
+if key2_pressed:
     action_toggle_orientation()
 
-if key_pressed:
+if key3_pressed:
     action_key_skip()
-
-if pwr_pressed:
-    action_pwr_checkin()
 
 ssid = wifi_cfg.get('ssid', '')
 
@@ -853,7 +828,6 @@ elif not wlan.isconnected():
     run_offline_fallback()
 
 else:
-    # Check server reachability before running the full sequence
     server_url = wifi_cfg.get('server_url', 'https://picframes.treee.house')
     reachable = False
     auth_failed = False
@@ -870,7 +844,7 @@ else:
         print('Server unreachable:', e)
 
     if not reachable or auth_failed:
-        ip = wlan.ifconfig()[0]
+        ip       = wlan.ifconfig()[0]
         hostname = 'picframe-' + mac_str.replace(':', '')[-8:].lower()
         orientation = sd_cfg.get('orientation', 'landscape')
         msg = 'INVALID USERNAME/PASSWORD' if auth_failed else 'CANNOT REACH SERVER'
