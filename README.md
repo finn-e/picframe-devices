@@ -7,8 +7,8 @@ Hardware targets:
 | Directory | Board | Panel | Notes |
 |-----------|-------|-------|-------|
 | `ESP32-S3-PhotoPainter/` | Waveshare ESP32-S3-PhotoPainter | 7.3" 6-color Spectra, 800×480 | SD card + AXP2101 PMIC |
-| `XIAO-EE04-7in3/` | Seeed XIAO ESP32-S3 | 7.3" Spectra 6, 800×480 | No SD, no PMIC — images cached in `/images/` on internal flash |
-| `XIAO-EE04-13in3/` | Seeed XIAO ESP32-S3 | 13.3" Spectra 6, 1200×1600 dual-controller | Server-side 1200×1600 asset pipeline not implemented yet |
+| `XIAO-EE04-7in3/` | Seeed EE04 e-paper display board (XIAO ESP32-S3-Plus MCU) | 7.3" Spectra 6, 800×480 | No SD, no PMIC — images cached in `/images/` on internal flash |
+| `XIAO-EE04-13in3/` | Seeed EE04 e-paper display board (XIAO ESP32-S3-Plus MCU) | 13.3" Spectra 6, 1200×1600 dual-controller | Server-side 1200×1600 asset pipeline not implemented yet |
 
 ## Repository Structure
 

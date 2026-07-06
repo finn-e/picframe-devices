@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 1.0.0
+# FILE VERSION: 1.1.0
 # DESCRIPTION: Hardware driver for the Seeed EE04 + 7.3" Spectra 6 e-Paper display.
 #   Same Spectra 6 panel family as Waveshare 7.3" (ED2208); pin assignments and
 #   power-gating adapted for the XIAO EE04 board.

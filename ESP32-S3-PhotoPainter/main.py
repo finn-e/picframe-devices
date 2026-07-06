@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 3.0.0
+# FILE VERSION: 3.2.0
 # DESCRIPTION: Main slideshow loop for ESP32-S3-PhotoPainter.
 #   Flow: check WiFi → check server → /api/update → /api/daily-config →
 #         /api/daily-zip → /api/refresh → render → sleep
@@ -119,7 +119,8 @@ except Exception as e:
 wifi_cfg = load_wifi_config()
 sd_cfg   = load_sd_config()
 
-HW_PROFILE = 'ESP32-S3-PhotoPainter'
+HW_PROFILE = 'Waveshare-PhotoPainter-7in3'
+RESOLUTION  = '800x480'
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def sd_mounted():
@@ -231,7 +232,7 @@ def render_and_sleep(img_path, orientation, sleep_interval):
         description  = img_cfg.get('description', '')
 
         apply_battery_square(buf, bat_pct)
-        apply_branding_text(buf, bat_pct, img_path)
+        apply_branding_text(buf, bat_pct)
         apply_caption_overlay(buf, img_path, caption_mode, description, 'portrait' in orientation)
 
         tmp_path = '/tmp_render.bin'

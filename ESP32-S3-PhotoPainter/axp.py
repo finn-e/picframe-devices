@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 1.0.0
+# FILE VERSION: 1.1.0
 # DESCRIPTION: AXP2101 Power Management IC driver.
 # ==========================================
 import machine

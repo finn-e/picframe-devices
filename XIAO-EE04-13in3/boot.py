@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 1.0.0
+# FILE VERSION: 1.2.0
 # DESCRIPTION: Bootloader for XIAO EE04 devices — no SD card, no PMIC.
 #   Ensures /images/ directory exists, connects WiFi, registers device token.
 # ==========================================
@@ -10,6 +10,9 @@ import json
 import time
 
 print('--- EE04 Frame bootup ---')
+
+HW_PROFILE = 'Seeed-EE04-Spectra6-13in3'
+RESOLUTION  = '1600x1200'
 
 # ── Safety wait (10 s) — hold KEY1 (GPIO2) to skip ───────────────────────────
 _boot_pin = machine.Pin(2, machine.Pin.IN, machine.Pin.PULL_UP)
@@ -94,7 +97,8 @@ else:
         try:
             import urequests
             auth = token if token else admin_password
-            body = json.dumps({'mac': mac_str, 'username': username, 'password': auth})
+            body = json.dumps({'mac': mac_str, 'username': username, 'password': auth,
+                               'hw_profile': HW_PROFILE, 'resolution': RESOLUTION})
             res  = urequests.post(
                 server_url + '/api/register',
                 data=body,

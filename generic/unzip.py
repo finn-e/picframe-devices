@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 1.0.0
+# FILE VERSION: 1.1.0
 # DESCRIPTION: Utility module for unzipping files in MicroPython.
 # ==========================================
 import os

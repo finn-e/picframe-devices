@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 2.0.0
+# FILE VERSION: 2.2.0
 # DESCRIPTION: Bootloader — mounts SD, connects WiFi, registers device,
 #              then hands off to main.py. No AP portal here.
 # ==========================================
@@ -10,6 +10,9 @@ import json
 import time
 
 print('--- Frame bootup ---')
+
+HW_PROFILE = 'Waveshare-PhotoPainter-7in3'
+RESOLUTION  = '800x480'
 
 # ── Safety wait (10 s) — hold BOOT to skip ────────────────────────────────────
 _boot_pin = machine.Pin(0, machine.Pin.IN, machine.Pin.PULL_UP)
@@ -116,7 +119,8 @@ else:
             import urequests
             # On first boot token is empty — authenticate with admin password instead
             auth = token if token else admin_password
-            body = json.dumps({'mac': mac_str, 'username': username, 'password': auth})
+            body = json.dumps({'mac': mac_str, 'username': username, 'password': auth,
+                               'hw_profile': HW_PROFILE, 'resolution': RESOLUTION})
             res  = urequests.post(
                 server_url + '/api/register',
                 data=body,

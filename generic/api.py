@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 2.0.0
+# FILE VERSION: 2.1.0
 # DESCRIPTION: API client for the PicFrames server. Handles all endpoint
 #              communication with auth headers, NTP sync, and fail-soft.
 # ==========================================

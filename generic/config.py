@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 3.0.0
+# FILE VERSION: 3.1.0
 # DESCRIPTION: Split config architecture.
 #   wifi_config.json  — internal flash, infrastructure + device identity
 #   /sd/config.json   — SD card, runtime presentation state

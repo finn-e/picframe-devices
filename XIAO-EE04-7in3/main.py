@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 1.0.0
+# FILE VERSION: 1.2.0
 # DESCRIPTION: Main slideshow loop for XIAO EE04 + 7.3" Spectra 6.
 #   Flow: check WiFi → check server → /api/update → /api/daily-config →
 #         /api/daily-zip → /api/refresh → render → sleep
@@ -139,7 +139,8 @@ except Exception as e:
 wifi_cfg = load_wifi_config()
 sd_cfg   = load_sd_config()
 
-HW_PROFILE = 'XIAO-EE04-7in3'
+HW_PROFILE = 'Seeed-EE04-Spectra6-7in3'
+RESOLUTION  = '800x480'
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def wipe_images():
@@ -243,7 +244,7 @@ def render_and_sleep(img_path, orientation, sleep_interval):
         description  = img_cfg.get('description', '')
 
         apply_battery_square(buf, bat_pct)
-        apply_branding_text(buf, bat_pct, img_path)
+        apply_branding_text(buf, bat_pct)
         apply_caption_overlay(buf, img_path, caption_mode, description, 'portrait' in orientation)
 
         tmp_path = '/tmp_render.bin'

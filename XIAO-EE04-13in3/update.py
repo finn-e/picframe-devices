@@ -1,14 +1,12 @@
 # ==========================================
-# FILE VERSION: 1.0.0
-# DESCRIPTION: Software update handler for XIAO EE04 devices.
-#   Downloads GitHub release ZIP to /images/, extracts, syncs newer files to Flash.
+# FILE VERSION: 2.0.0
+# DESCRIPTION: Software update handler. Downloads GitHub release ZIP,
+#              extracts to /images/, copies ALL .py files to Flash unconditionally
+#              (per-file version gating retired 2026-07-06).
 # ==========================================
 import os
 import urequests as requests
 from unzip import extract_zip
-
-FILES_TO_SYNC = ['boot.py', 'main.py', 'epd.py', 'battery.py', 'unzip.py',
-                 'config.py', 'api.py', 'display_overlay.py', 'update.py']
 
 def get_file_version(path):
     try:
@@ -24,14 +22,6 @@ def get_file_version(path):
     except Exception:
         pass
     return None
-
-def parse_version(ver_str):
-    if not ver_str:
-        return (0, 0, 0)
-    try:
-        return tuple(int(x) for x in ver_str.split('.')[:3])
-    except Exception:
-        return (0, 0, 0)
 
 def copy_file(src, dst):
     with open(src, 'rb') as s:
@@ -56,7 +46,8 @@ def clear_images_py_files():
 
 def download_and_apply_update(zip_url, zip_dest='/images/update.zip'):
     """
-    Downloads ZIP from zip_url, extracts to /images/, syncs newer files to Flash.
+    Downloads ZIP from zip_url, extracts to /images/, copies every .py file
+    from the update to Flash unconditionally.
     Returns True if any flash files were updated (soft reset recommended).
     """
     print('Downloading update from:', zip_url)
@@ -77,19 +68,14 @@ def download_and_apply_update(zip_url, zip_dest='/images/update.zip'):
         os.remove(zip_dest)
     except Exception:
         pass
+    # Old .py files were cleared before extraction, so every .py present
+    # came from the update ZIP. Copy them all to Flash.
     flash_updated = False
-    for filename in FILES_TO_SYNC:
-        src_path   = '/images/' + filename
-        flash_path = '/' + filename
-        try:
-            os.stat(src_path)
-        except OSError:
+    for filename in sorted(os.listdir('/images')):
+        if not filename.endswith('.py'):
             continue
-        ver_src   = get_file_version(src_path)
-        ver_flash = get_file_version(flash_path)
-        print('Checking:', filename, '| new:', ver_src, '| flash:', ver_flash)
-        if parse_version(ver_src) > parse_version(ver_flash):
-            print('Upgrading', filename, 'to', ver_src)
-            copy_file(src_path, flash_path)
-            flash_updated = True
+        src_path = '/images/' + filename
+        print('Syncing:', filename, '| version:', get_file_version(src_path))
+        copy_file(src_path, '/' + filename)
+        flash_updated = True
     return flash_updated

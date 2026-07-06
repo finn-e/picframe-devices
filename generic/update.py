@@ -1,14 +1,12 @@
 # ==========================================
-# FILE VERSION: 2.0.0
+# FILE VERSION: 3.0.0
 # DESCRIPTION: Software update handler. Downloads GitHub release ZIP,
-#              extracts to SD, compares file versions, copies newer to Flash.
+#              extracts to SD, copies ALL .py files to Flash unconditionally
+#              (per-file version gating retired 2026-07-06).
 # ==========================================
 import os
 import urequests as requests
 from unzip import extract_zip
-
-FILES_TO_SYNC = ['boot.py', 'main.py', 'epd.py', 'axp.py', 'unzip.py',
-                 'config.py', 'api.py', 'display_overlay.py', 'update.py']
 
 def get_file_version(path):
     try:
@@ -24,14 +22,6 @@ def get_file_version(path):
     except Exception:
         pass
     return None
-
-def parse_version(ver_str):
-    if not ver_str:
-        return (0, 0, 0)
-    try:
-        return tuple(int(x) for x in ver_str.split('.')[:3])
-    except Exception:
-        return (0, 0, 0)
 
 def copy_file(src, dst):
     with open(src, 'rb') as s:
@@ -56,7 +46,8 @@ def clear_sd_py_files():
 
 def download_and_apply_update(zip_url, zip_dest='/sd/update.zip'):
     """
-    Downloads ZIP from zip_url, extracts to /sd/, syncs newer files to Flash.
+    Downloads ZIP from zip_url, extracts to /sd/, copies every .py file
+    from the update to Flash unconditionally.
     Returns True if any flash files were updated (soft reset recommended).
     """
     print('Downloading update from:', zip_url)
@@ -77,19 +68,14 @@ def download_and_apply_update(zip_url, zip_dest='/sd/update.zip'):
         os.remove(zip_dest)
     except Exception:
         pass
+    # Old .py files were cleared before extraction, so every .py present
+    # came from the update ZIP. Copy them all to Flash.
     flash_updated = False
-    for filename in FILES_TO_SYNC:
-        sd_path = '/sd/' + filename
-        flash_path = '/' + filename
-        try:
-            os.stat(sd_path)
-        except OSError:
+    for filename in sorted(os.listdir('/sd')):
+        if not filename.endswith('.py'):
             continue
-        ver_sd = get_file_version(sd_path)
-        ver_flash = get_file_version(flash_path)
-        print('Checking:', filename, '| SD:', ver_sd, '| Flash:', ver_flash)
-        if parse_version(ver_sd) > parse_version(ver_flash):
-            print('Upgrading', filename, 'to', ver_sd)
-            copy_file(sd_path, flash_path)
-            flash_updated = True
+        sd_path = '/sd/' + filename
+        print('Syncing:', filename, '| version:', get_file_version(sd_path))
+        copy_file(sd_path, '/' + filename)
+        flash_updated = True
     return flash_updated

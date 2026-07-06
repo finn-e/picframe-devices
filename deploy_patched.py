@@ -12,8 +12,13 @@ serial.Serial._update_dtr_state = no_op
 from mpremote.main import main
 
 port = '/dev/ttyACM0'
-src_dir = 'XIAO-EE04-7in3'
-files_to_copy = [f for f in os.listdir(src_dir) if f.endswith('.py') or f.endswith('.bin')]
+board_dir = 'XIAO-EE04-7in3'
+# Merge file sets: generic/ first, then the board dir (board wins on collision).
+files_to_copy = {}  # filename -> local path
+for src_dir in ('generic', board_dir):
+    for f in sorted(os.listdir(src_dir)):
+        if f.endswith('.py') or f.endswith('.bin'):
+            files_to_copy[f] = os.path.join(src_dir, f)
 
 # Wait for port to stabilize
 print("Waiting for serial port...", flush=True)
@@ -59,8 +64,8 @@ except Exception as e:
 
 # Build arguments for mpremote resume (so it does not auto soft-reset)
 args_copy = ["mpremote", "resume", "fs", "cp"]
-for filename in files_to_copy:
-    args_copy.append(os.path.join(src_dir, filename))
+for filename in sorted(files_to_copy):
+    args_copy.append(files_to_copy[filename])
 args_copy.append(":/")
 
 print("Executing patched mpremote transfer...", flush=True)

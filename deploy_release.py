@@ -4,7 +4,11 @@ import sys
 import time
 
 port = '/dev/ttyACM0'
-src_dir = 'latest_release/ESP32-S3-PhotoPainter'
+# Release zips are flat (no board prefix) as of the generic/ consolidation;
+# fall back to the old nested layout for zips from older releases.
+src_dir = 'latest_release'
+if os.path.isdir('latest_release/ESP32-S3-PhotoPainter'):
+    src_dir = 'latest_release/ESP32-S3-PhotoPainter'
 files_to_copy = [f for f in os.listdir(src_dir) if f.endswith('.py') or f.endswith('.bin')]
 
 # Wait for port to stabilize

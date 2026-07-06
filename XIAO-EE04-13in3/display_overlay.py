@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 1.0.0
+# FILE VERSION: 1.1.0
 # DESCRIPTION: Display overlay routines for 13.3" Spectra 6 (1200×1600 native).
 #   Adapted from PhotoPainter display_overlay.py — same logic, different canvas size.
 #   EPD_WIDTH=1200, EPD_HEIGHT=1600 (physical panel, portrait native orientation).

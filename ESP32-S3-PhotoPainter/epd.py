@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 1.0.0
+# FILE VERSION: 1.1.0
 # DESCRIPTION: Hardware driver for the Waveshare Spectra 6 7.3-inch e-Paper display.
 # ==========================================
 import machine

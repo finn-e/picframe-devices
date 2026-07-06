@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 2.0.0
+# FILE VERSION: 2.1.0
 # DESCRIPTION: Display overlay routines: battery indicator square,
 #              PicFrames branding text, and critical battery banner.
 # ==========================================
@@ -74,7 +74,7 @@ def _render_outlined_text_line_at(buf, text, x_start, y, scale=1, width=800):
     char_w = 5
     spacing = 1
     
-    # 1. Outline pass (black)
+    # 1. Outline pass (white)
     x_off = x_start
     for ch in text:
         glyph = FONT.get(ch.upper(), FONT.get(' ', (0,0,0,0,0)))
@@ -87,10 +87,10 @@ def _render_outlined_text_line_at(buf, text, x_start, y, scale=1, width=800):
                             if ox != 0 or oy != 0:
                                 for sx in range(scale):
                                     for sy in range(scale):
-                                        _set_pixel(buf, x_off + ci*scale + sx + ox, y + ri*scale + sy + oy, COL_BLACK, width)
+                                        _set_pixel(buf, x_off + ci*scale + sx + ox, y + ri*scale + sy + oy, COL_WHITE, width)
         x_off += (char_w + spacing) * scale
 
-    # 2. Body pass (white)
+    # 2. Body pass (black)
     x_off = x_start
     for ch in text:
         glyph = FONT.get(ch.upper(), FONT.get(' ', (0,0,0,0,0)))
@@ -100,7 +100,7 @@ def _render_outlined_text_line_at(buf, text, x_start, y, scale=1, width=800):
                 if col_val & (1 << ri):
                     for sx in range(scale):
                         for sy in range(scale):
-                            _set_pixel(buf, x_off + ci*scale + sx, y + ri*scale + sy, COL_WHITE, width)
+                            _set_pixel(buf, x_off + ci*scale + sx, y + ri*scale + sy, COL_BLACK, width)
         x_off += (char_w + spacing) * scale
 
 def _render_outlined_text_line(buf, text, y, scale=1, x_center=None, width=800):
@@ -171,23 +171,13 @@ def _apply_critical_battery_banner(buf):
     msg = 'LOW BATTERY: PLEASE PLUG INTO POWER'
     _render_text_line(buf, msg, BANNER_Y + (BANNER_H - 7) // 2, scale=1, color=COL_WHITE)
 
-def apply_branding_text(buf, battery_pct=None, img_path=None):
-    """Renders image name (or fallback brand text) at bottom edge."""
-    if img_path:
-        base = img_path.split('/')[-1]
-        if base.endswith('.bin'):
-            base = base[:-4]
-        for suffix in ('_l_u', '_l_f', '_p_u', '_p_f', '_l', '_p'):
-            if base.endswith(suffix):
-                base = base[:-len(suffix)]
-                break
-        msg = base.replace('_', ' ').upper().strip()
-    else:
-        msg = 'PICFRAMES'
+def apply_branding_text(buf, battery_pct=None):
+    """Renders 'PicFrames/CONNECTED DISPLAY' at bottom edge."""
+    msg = 'PICFRAMES/CONNECTED DISPLAY'
     y = 480 - 12
     if battery_pct is not None and battery_pct < 20:
-        y = 480 - 26
-    _render_outlined_text_line(buf, msg, y, scale=1)
+        y = 480 - 26 # Shift up to accommodate the low battery banner underneath
+    _render_text_line(buf, msg, y, scale=1, color=COL_BLACK)
 
 def _wrap_text(text, max_chars=76):
     words = text.split(' ')

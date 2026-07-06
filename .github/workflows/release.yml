@@ -26,16 +26,19 @@ jobs:
           patch_pattern: "fix:"
           version_format: "${major}.${minor}.${patch}"
 
-      - name: Build ESP32-S3-PhotoPainter firmware ZIP
+      - name: Build per-board firmware ZIPs (generic/ + board dir, board wins)
         run: |
-          mkdir -p dist/ESP32-S3-PhotoPainter
-          cp generic/*.py dist/ESP32-S3-PhotoPainter/
-          cp ESP32-S3-PhotoPainter/*.py dist/ESP32-S3-PhotoPainter/
-          cp ESP32-S3-PhotoPainter/*.bin dist/ESP32-S3-PhotoPainter/ || true
           TAG=${{ steps.semver.outputs.version }}
-          cd dist
-          zip -r ESP32-S3-PhotoPainter-${TAG}.zip ESP32-S3-PhotoPainter/
-          zip -r ESP32-S3-PhotoPainter.zip ESP32-S3-PhotoPainter/
+          for BOARD in ESP32-S3-PhotoPainter XIAO-EE04-7in3 XIAO-EE04-13in3; do
+            mkdir -p "dist/$BOARD"
+            cp generic/*.py "dist/$BOARD/"
+            cp "$BOARD"/*.py "dist/$BOARD/"
+            cp "$BOARD"/*.bin "dist/$BOARD/" 2>/dev/null || true
+            # Flat zip layout: device update.py extracts to its storage root
+            # and syncs top-level files by name (no directory prefix).
+            (cd "dist/$BOARD" && zip -r "../$BOARD-$TAG.zip" .)
+            (cd "dist/$BOARD" && zip -r "../$BOARD.zip" .)
+          done
 
       - name: Generate Changelog
         id: changelog
@@ -56,6 +59,10 @@ jobs:
           files: |
             dist/ESP32-S3-PhotoPainter-*.zip
             dist/ESP32-S3-PhotoPainter.zip
+            dist/XIAO-EE04-7in3-*.zip
+            dist/XIAO-EE04-7in3.zip
+            dist/XIAO-EE04-13in3-*.zip
+            dist/XIAO-EE04-13in3.zip
           draft: false
           prerelease: false
           make_latest: true
@@ -79,6 +86,8 @@ jobs:
             Version: v${{ steps.semver.outputs.version }}
           files: |
             dist/ESP32-S3-PhotoPainter.zip
+            dist/XIAO-EE04-7in3.zip
+            dist/XIAO-EE04-13in3.zip
           make_latest: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

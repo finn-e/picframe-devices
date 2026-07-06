@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 1.0.0
+# FILE VERSION: 1.1.0
 # DESCRIPTION: Split config architecture for XIAO EE04 devices.
 #   wifi_config.json  — internal flash, infrastructure + device identity
 #   /images/config.json — internal flash (no SD card on EE04), runtime state

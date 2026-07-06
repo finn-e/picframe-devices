@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 1.0.0
+# FILE VERSION: 1.1.0
 # DESCRIPTION: Battery monitoring for XIAO ESP32-S3 Plus on EE04 board.
 #   ADC on GPIO1 (A0); gate pin GPIO6 (A5/D5) must be HIGH before sampling.
 #   No USB-connection detection is available on this board — is_usb_connected()

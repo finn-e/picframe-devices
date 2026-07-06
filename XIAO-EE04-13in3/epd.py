@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 1.0.0
+# FILE VERSION: 1.1.0
 # DESCRIPTION: Hardware driver for Seeed EE04 + 13.3" Spectra 6 dual-controller panel.
 #   Panel: 1200 px wide × 1600 px tall (physical, portrait native).
 #   Dual SPI controllers share RST/BUSY; each owns a separate CS line.
