@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 2.1.0
+# FILE VERSION: 2.2.0
 # DESCRIPTION: API client for the PicFrames server. Handles all endpoint
 #              communication with auth headers, NTP sync, and fail-soft.
 # ==========================================
@@ -24,12 +24,15 @@ def sync_ntp():
     print('All NTP servers failed.')
     return False
 
-def make_headers(mac, token):
-    return {
+def make_headers(mac, token, fw_version=None):
+    h = {
         'Content-Type': 'application/json',
         'X-Device-Mac': mac,
         'X-Device-Token': token,
     }
+    if fw_version:
+        h['X-Firmware-Version'] = fw_version
+    return h
 
 def call_update(server_url, mac, token, hw_profile, update_version):
     """
@@ -47,14 +50,15 @@ def call_update(server_url, mac, token, hw_profile, update_version):
     res.close()
     return None
 
-def call_daily_config(server_url, mac, token):
+def call_daily_config(server_url, mac, token, fw_version=None):
     """
     GET /api/daily-config
+    fw_version: optional firmware version string to report via X-Firmware-Version header.
     Returns parsed JSON dict.
     Raises exception on failure.
     """
     url = server_url + '/api/daily-config'
-    res = requests.get(url, headers=make_headers(mac, token), timeout=10)
+    res = requests.get(url, headers=make_headers(mac, token, fw_version=fw_version), timeout=10)
     if res.status_code != 200:
         code = res.status_code
         res.close()

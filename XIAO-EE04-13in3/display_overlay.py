@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 1.1.0
+# FILE VERSION: 1.2.0
 # DESCRIPTION: Display overlay routines for 13.3" Spectra 6 (1200×1600 native).
 #   Adapted from PhotoPainter display_overlay.py — same logic, different canvas size.
 #   EPD_WIDTH=1200, EPD_HEIGHT=1600 (physical panel, portrait native orientation).
@@ -174,7 +174,7 @@ def _wrap_text(text, max_chars=76):
         lines.append(' '.join(curr_line))
     return lines
 
-def apply_caption_overlay(buf, filename, mode, description, is_portrait):
+def apply_caption_overlay(buf, filename, mode, description, is_portrait, battery_pct=None, fw_suffix=None):
     if not mode or mode == 'none':
         return
     base = filename.split('/')[-1]
@@ -185,6 +185,8 @@ def apply_caption_overlay(buf, filename, mode, description, is_portrait):
             base = base[:-len(suffix)]
             break
     title = base.replace('_', ' ').upper().strip()
+    if fw_suffix:
+        title = title + ' - FIRMWARE:' + fw_suffix.upper()
     if mode == 'title':
         _render_outlined_text_line(buf, title, EPD_HEIGHT - 18, scale=1)
     elif mode == 'details':

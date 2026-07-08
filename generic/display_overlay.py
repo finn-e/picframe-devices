@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 2.2.0
+# FILE VERSION: 2.3.0
 # DESCRIPTION: Display overlay routines: battery indicator square and
 #              critical battery banner.
 # ==========================================
@@ -195,9 +195,10 @@ def _wrap_text(text, max_chars=76):
         lines.append(' '.join(curr_line))
     return lines
 
-def apply_caption_overlay(buf, filename, mode, description, is_portrait, battery_pct=None):
+def apply_caption_overlay(buf, filename, mode, description, is_portrait, battery_pct=None, fw_suffix=None):
     """Paints caption (None, Title, Details, Verbose) centered at the bottom of the canvas.
-    Shifts text up by BANNER_H when battery is critical so it clears the banner."""
+    Shifts text up by BANNER_H when battery is critical so it clears the banner.
+    fw_suffix: optional string appended to title as ' - Firmware:<fw_suffix>' when show_fw_version is set."""
     if not mode or mode == 'none':
         return
 
@@ -213,6 +214,8 @@ def apply_caption_overlay(buf, filename, mode, description, is_portrait, battery
             base = base[:-len(suffix)]
             break
     title = base.replace('_', ' ').upper().strip()
+    if fw_suffix:
+        title = title + ' - FIRMWARE:' + fw_suffix.upper()
 
     if mode == 'title':
         _render_outlined_text_line(buf, title, 480 - 18 - shift, scale=1)

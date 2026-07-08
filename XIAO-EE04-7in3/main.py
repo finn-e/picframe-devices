@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 1.3.0
+# FILE VERSION: 1.4.0
 # DESCRIPTION: Main slideshow loop for XIAO EE04 + 7.3" Spectra 6.
 #   Flow: check WiFi → check server → /api/update → /api/daily-config →
 #         /api/daily-zip → /api/refresh → render → sleep
@@ -244,7 +244,8 @@ def render_and_sleep(img_path, orientation, sleep_interval):
         description  = img_cfg.get('description', '')
 
         apply_battery_square(buf, bat_pct)
-        apply_caption_overlay(buf, img_path, caption_mode, description, 'portrait' in orientation, bat_pct)
+        fw_suffix = sd_cfg.get('update_version', '') if sd_cfg.get('show_fw_version') else None
+        apply_caption_overlay(buf, img_path, caption_mode, description, 'portrait' in orientation, bat_pct, fw_suffix=fw_suffix)
 
         tmp_path = '/tmp_render.bin'
         with open(tmp_path, 'wb') as f:
@@ -724,6 +725,7 @@ def run_offline_fallback():
             '',
             'TO ADD PICS VISIT:',
             server_host[:44],
+            'Firmware:' + (sd_cfg.get('update_version', '') or 'unknown'),
         ], orient)
     except Exception as e:
         print('Offline screen draw failed:', e)
@@ -753,7 +755,7 @@ def run_connected_sequence():
         run_offline_fallback(); return
 
     try:
-        dcfg = call_daily_config(server_url, mac_str, token)
+        dcfg = call_daily_config(server_url, mac_str, token, fw_version=sd_cfg.get('update_version', ''))
         changed = False
         for key in ('landscape_flipped', 'portrait_flipped'):
             server_val = bool(dcfg.get(key, False))
@@ -762,6 +764,8 @@ def run_connected_sequence():
                 changed = True
         if changed:
             save_wifi_config(wifi_cfg)
+        if 'show_fw_version' in dcfg:
+            sd_cfg['show_fw_version'] = bool(dcfg['show_fw_version'])
         merged = merge_sd_config(sd_cfg, dcfg)
         save_sd_config(merged)
         sd_cfg.update(merged)
