@@ -214,7 +214,7 @@ def render_and_sleep(img_path, orientation, sleep_interval):
         pass
     bat_pct = get_bat_pct()
     try:
-        from display_overlay import apply_battery_square, apply_branding_text, apply_caption_overlay, apply_debug_overlay
+        from display_overlay import apply_battery_square, apply_caption_overlay, apply_debug_overlay
         buf = bytearray(192000)
         with open(img_path, 'rb') as f:
             f.readinto(buf)
@@ -232,7 +232,6 @@ def render_and_sleep(img_path, orientation, sleep_interval):
         description  = img_cfg.get('description', '')
 
         apply_battery_square(buf, bat_pct)
-        apply_branding_text(buf, bat_pct)
         apply_caption_overlay(buf, img_path, caption_mode, description, 'portrait' in orientation)
 
         tmp_path = '/tmp_render.bin'
