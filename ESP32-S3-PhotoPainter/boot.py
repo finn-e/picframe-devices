@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 2.2.0
+# FILE VERSION: 2.3.0
 # DESCRIPTION: Bootloader — mounts SD, connects WiFi, registers device,
 #              then hands off to main.py. No AP portal here.
 # ==========================================
@@ -118,6 +118,7 @@ else:
         try:
             import urequests
             # On first boot token is empty — authenticate with admin password instead
+            used_token = bool(token)
             auth = token if token else admin_password
             body = json.dumps({'mac': mac_str, 'username': username, 'password': auth,
                                'hw_profile': HW_PROFILE, 'resolution': RESOLUTION})
@@ -127,15 +128,45 @@ else:
                 headers={'Content-Type': 'application/json'},
                 timeout=10,
             )
-            data = json.loads(res.text)
+            status = res.status_code
+            data   = json.loads(res.text)
             res.close()
-            new_token = data.get('token', '')
-            if new_token and new_token != token:
-                wifi_cfg['token'] = new_token
-                save_wifi_config(wifi_cfg)
-                print('Device token saved.')
+            if status == 200 and 'error' not in data:
+                new_token = data.get('token', '')
+                if new_token and new_token != token:
+                    wifi_cfg['token'] = new_token
+                    save_wifi_config(wifi_cfg)
+                    print('Device token saved.')
+                else:
+                    print('Registration ok, token unchanged.')
+            elif used_token and admin_password:
+                # Token was stale — retry once with the stored user password
+                body2 = json.dumps({'mac': mac_str, 'username': username,
+                                    'password': admin_password,
+                                    'hw_profile': HW_PROFILE, 'resolution': RESOLUTION})
+                res2  = urequests.post(
+                    server_url + '/api/register',
+                    data=body2,
+                    headers={'Content-Type': 'application/json'},
+                    timeout=10,
+                )
+                status2 = res2.status_code
+                data2   = json.loads(res2.text)
+                res2.close()
+                if status2 == 200 and 'error' not in data2:
+                    new_token = data2.get('token', '')
+                    if new_token:
+                        wifi_cfg['token'] = new_token
+                        save_wifi_config(wifi_cfg)
+                        print('Device token refreshed via credentials.')
+                    else:
+                        print('Registration ok (credentials), token unchanged.')
+                else:
+                    err = data2.get('error', 'unknown')
+                    print('/api/register rejected:', status2, err)
             else:
-                print('Registration ok, token unchanged.')
+                err = data.get('error', 'unknown')
+                print('/api/register rejected:', status, err)
         except Exception as e:
             print('/api/register failed (continuing with existing token):', e)
     else:
