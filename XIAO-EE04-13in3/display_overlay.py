@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 1.2.0
+# FILE VERSION: 1.3.0
 # DESCRIPTION: Display overlay routines for 13.3" Spectra 6 (1200×1600 native).
 #   Adapted from PhotoPainter display_overlay.py — same logic, different canvas size.
 #   EPD_WIDTH=1200, EPD_HEIGHT=1600 (physical panel, portrait native orientation).
@@ -174,7 +174,7 @@ def _wrap_text(text, max_chars=76):
         lines.append(' '.join(curr_line))
     return lines
 
-def apply_caption_overlay(buf, filename, mode, description, is_portrait, battery_pct=None, fw_suffix=None):
+def apply_caption_overlay(buf, filename, mode, description, is_portrait, battery_pct=None):
     if not mode or mode == 'none':
         return
     base = filename.split('/')[-1]
@@ -185,8 +185,6 @@ def apply_caption_overlay(buf, filename, mode, description, is_portrait, battery
             base = base[:-len(suffix)]
             break
     title = base.replace('_', ' ').upper().strip()
-    if fw_suffix:
-        title = title + ' - FIRMWARE:' + fw_suffix.upper()
     if mode == 'title':
         _render_outlined_text_line(buf, title, EPD_HEIGHT - 18, scale=1)
     elif mode == 'details':
@@ -219,31 +217,24 @@ def apply_caption_overlay(buf, filename, mode, description, is_portrait, battery
                 _render_outlined_text_line(buf, line, y, scale=1)
             _render_outlined_text_line(buf, title, EPD_HEIGHT - 12 - len(lines) * 10, scale=1)
 
-def apply_debug_overlay(buf, version, orient, filename, flipped_l, flipped_p, bat_pct):
-    v_str = 'V{}'.format(version or '1.0.0')
-    o_str = orient.upper()
-    base = filename.split('/')[-1]
-    if base.endswith('.bin'):
-        base = base[:-4]
-    for suffix in ['_l_u', '_l_f', '_p_u', '_p_f', '_l', '_p']:
-        if base.endswith(suffix):
-            base = base[:-len(suffix)]
-            break
-    f_str  = base.replace('_', ' ').upper()
-    fl_str = 'L-FLIP:{}'.format('TRUE' if flipped_l else 'FALSE')
-    fp_str = 'P-FLIP:{}'.format('TRUE' if flipped_p else 'FALSE')
-    b_val  = 100 if bat_pct is None else bat_pct
-    b_str  = 'BATT:{}%'.format(b_val)
-    is_p   = 'portrait' in orient.lower()
-    if not is_p:
-        left_text = '{}  {}  {}  {}  {}'.format(v_str, o_str, f_str, fl_str, fp_str)
-        _render_outlined_text_line_at(buf, left_text, 8, EPD_HEIGHT - 12, scale=1)
-        bat_w = len(b_str) * 6
-        _render_outlined_text_line_at(buf, b_str, EPD_WIDTH - 8 - bat_w, EPD_HEIGHT - 12, scale=1)
-    else:
-        line1 = '{}  {}'.format(v_str, f_str)
-        line2 = '{}  {}  {}'.format(o_str, fl_str, fp_str)
-        _render_outlined_text_line_at(buf, line1, 8, EPD_HEIGHT - 22, scale=1)
-        _render_outlined_text_line_at(buf, line2, 8, EPD_HEIGHT - 12, scale=1)
-        bat_w = len(b_str) * 6
-        _render_outlined_text_line_at(buf, b_str, EPD_WIDTH - 8 - bat_w, EPD_HEIGHT - 12, scale=1)
+def apply_debug_overlay(buf, lines):
+    """Render a small block of right-aligned debug lines in the upper-right corner.
+    *lines* is a list of strings (empty/None entries are skipped).
+    Canvas is EPD_WIDTH x EPD_HEIGHT (1200 x 1600). Lines are right-aligned by
+    pixel width (len * 6) with a small margin from the right edge."""
+    char_w = 5
+    spacing = 1
+    glyph_stride = char_w + spacing  # 6 px per character
+    line_height = 9                  # 7px glyph + 2px gap
+    margin_right = 4
+    margin_top = 4
+
+    y = margin_top
+    for line in lines:
+        if not line:
+            continue
+        text = str(line)
+        w = len(text) * glyph_stride
+        x = EPD_WIDTH - margin_right - w
+        _render_outlined_text_line_at(buf, text, x, y, scale=1, width=EPD_WIDTH)
+        y += line_height

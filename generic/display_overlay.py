@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 2.3.0
+# FILE VERSION: 2.4.0
 # DESCRIPTION: Display overlay routines: battery indicator square and
 #              critical battery banner.
 # ==========================================
@@ -195,10 +195,9 @@ def _wrap_text(text, max_chars=76):
         lines.append(' '.join(curr_line))
     return lines
 
-def apply_caption_overlay(buf, filename, mode, description, is_portrait, battery_pct=None, fw_suffix=None):
+def apply_caption_overlay(buf, filename, mode, description, is_portrait, battery_pct=None):
     """Paints caption (None, Title, Details, Verbose) centered at the bottom of the canvas.
-    Shifts text up by BANNER_H when battery is critical so it clears the banner.
-    fw_suffix: optional string appended to title as ' - Firmware:<fw_suffix>' when show_fw_version is set."""
+    Shifts text up by BANNER_H when battery is critical so it clears the banner."""
     if not mode or mode == 'none':
         return
 
@@ -214,8 +213,6 @@ def apply_caption_overlay(buf, filename, mode, description, is_portrait, battery
             base = base[:-len(suffix)]
             break
     title = base.replace('_', ' ').upper().strip()
-    if fw_suffix:
-        title = title + ' - FIRMWARE:' + fw_suffix.upper()
 
     if mode == 'title':
         _render_outlined_text_line(buf, title, 480 - 18 - shift, scale=1)
@@ -250,42 +247,26 @@ def apply_caption_overlay(buf, filename, mode, description, is_portrait, battery
             title_y = 480 - 12 - shift - len(lines) * 10
             _render_outlined_text_line(buf, title, title_y, scale=1)
 
-def apply_debug_overlay(buf, version, orient, filename, flipped_l, flipped_p, bat_pct):
-    """Paints debug details (Verbose mode) at the bottom of the canvas."""
-    v_str = f"V{version or '2.0.0'}"
-    o_str = orient.upper()
-    
-    # Format filename to Title
-    base = filename.split('/')[-1]
-    if base.endswith('.bin'):
-        base = base[:-4]
-    for suffix in ['_l_u', '_l_f', '_p_u', '_p_f', '_l', '_p']:
-        if base.endswith(suffix):
-            base = base[:-len(suffix)]
-            break
-    f_str = base.replace('_', ' ').upper()
-    
-    fl_str = f"L-FLIP:{'TRUE' if flipped_l else 'FALSE'}"
-    fp_str = f"P-FLIP:{'TRUE' if flipped_p else 'FALSE'}"
-    b_val = 100 if bat_pct is None else bat_pct
-    b_str = f"BATT:{b_val}%"
-    
-    is_portrait = "portrait" in orient.lower()
-    
-    if not is_portrait:
-        # Landscape: Spread along 1 line
-        left_text = f"{v_str}  {o_str}  {f_str}  {fl_str}  {fp_str}"
-        _render_outlined_text_line_at(buf, left_text, 8, 480 - 12, scale=1)
-        
-        bat_w = len(b_str) * 6
-        _render_outlined_text_line_at(buf, b_str, 786 - bat_w, 480 - 12, scale=1)
-    else:
-        # Portrait: Spread along 2 lines
-        line1 = f"{v_str}  {f_str}"
-        line2 = f"{o_str}  {fl_str}  {fp_str}"
-        
-        _render_outlined_text_line_at(buf, line1, 8, 480 - 22, scale=1)
-        _render_outlined_text_line_at(buf, line2, 8, 480 - 12, scale=1)
-        
-        bat_w = len(b_str) * 6
-        _render_outlined_text_line_at(buf, b_str, 786 - bat_w, 480 - 12, scale=1)
+def apply_debug_overlay(buf, lines):
+    """Render a small block of right-aligned debug lines in the upper-right corner.
+    *lines* is a list of strings (empty/None entries are skipped).
+    Rendered in landscape-space upper-right corner (portrait orientation note:
+    the physical buffer is landscape-packed 800x480; the debug block appears in
+    the upper-right of the physical buffer regardless of display orientation).
+    Each line is right-aligned using its pixel width = len * 6 (5px glyph + 1 gap)."""
+    char_w = 5
+    spacing = 1
+    glyph_stride = char_w + spacing  # 6 px per character
+    line_height = 9                  # 7px glyph + 2px gap
+    margin_right = 4
+    margin_top = 4
+
+    y = margin_top
+    for line in lines:
+        if not line:
+            continue
+        text = str(line)
+        w = len(text) * glyph_stride
+        x = 800 - margin_right - w
+        _render_outlined_text_line_at(buf, text, x, y, scale=1, width=800)
+        y += line_height

@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 1.4.0
+# FILE VERSION: 1.5.0
 # DESCRIPTION: Main slideshow loop for XIAO EE04 + 13.3" Spectra 6 (dual-controller).
 #   Panel: 1200 × 1600 px physical (portrait native).
 #   Image pipeline resolution: EPD_WIDTH=1200, EPD_HEIGHT=1600.
@@ -167,6 +167,14 @@ def get_bat_pct():
         return None
 
 def go_to_sleep(seconds):
+    if sd_cfg.get('debug'):
+        print('DEBUG mode — using light sleep (time.sleep + reset) for', seconds, 's')
+        try:
+            time.sleep(seconds)
+        except Exception:
+            pass
+        machine.reset()
+        return
     try:
         from battery import is_usb_connected
         if is_usb_connected():
@@ -223,7 +231,7 @@ def render_and_sleep(img_path, orientation, sleep_interval):
         pass
     bat_pct = get_bat_pct()
     try:
-        from display_overlay import apply_battery_square, apply_caption_overlay
+        from display_overlay import apply_battery_square, apply_caption_overlay, apply_debug_overlay
 
         # 960 000-byte buffer — requires PSRAM (8 MB available on XIAO ESP32-S3 Plus)
         gc.collect()
@@ -244,8 +252,33 @@ def render_and_sleep(img_path, orientation, sleep_interval):
         description  = img_cfg.get('description', '')
 
         apply_battery_square(buf, bat_pct)
-        fw_suffix = sd_cfg.get('update_version', '') if sd_cfg.get('show_fw_version') else None
-        apply_caption_overlay(buf, img_path, caption_mode, description, 'portrait' in orientation, bat_pct, fw_suffix=fw_suffix)
+        apply_caption_overlay(buf, img_path, caption_mode, description, 'portrait' in orientation, bat_pct)
+
+        if sd_cfg.get('debug'):
+            orient_upper = orientation.upper()
+            flip_str = ''
+            if sd_cfg.get('landscape_flipped') or sd_cfg.get('flip_l'):
+                flip_str += ' L-FLIP'
+            if sd_cfg.get('portrait_flipped') or sd_cfg.get('flip_p'):
+                flip_str += ' P-FLIP'
+            checkin_str = 'CHECKIN:?'
+            try:
+                last_ci = sd_cfg.get('last_checkin')
+                if last_ci:
+                    mins = int((time.time() - last_ci) / 60)
+                    checkin_str = 'CHECKIN:{}M AGO'.format(mins)
+            except Exception:
+                pass
+            b_val = bat_pct if bat_pct is not None else 100
+            debug_lines = [
+                'MAC:' + mac_str,
+                'FW:' + (sd_cfg.get('update_version') or 'unknown'),
+                checkin_str,
+                'BATT:{}%'.format(b_val),
+                orient_upper + (flip_str or ''),
+                'IMG:' + base_name,
+            ]
+            apply_debug_overlay(buf, debug_lines)
 
         tmp_path = '/tmp_render.bin'
         with open(tmp_path, 'wb') as f:
@@ -689,7 +722,6 @@ def run_offline_fallback():
             '',
             'TO ADD PICS VISIT:',
             server_host[:44],
-            'Firmware:' + (sd_cfg.get('update_version', '') or 'unknown'),
         ], orient)
     except Exception as e:
         print('Offline screen draw failed:', e)
@@ -745,8 +777,9 @@ def run_connected_sequence():
                 changed = True
         if changed:
             save_wifi_config(wifi_cfg)
-        if 'show_fw_version' in dcfg:
-            sd_cfg['show_fw_version'] = bool(dcfg['show_fw_version'])
+        if 'debug' in dcfg:
+            sd_cfg['debug'] = bool(dcfg['debug'])
+        sd_cfg['last_checkin'] = time.time()
         merged = merge_sd_config(sd_cfg, dcfg)
         save_sd_config(merged)
         sd_cfg.update(merged)

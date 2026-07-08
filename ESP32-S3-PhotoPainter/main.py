@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 3.4.0
+# FILE VERSION: 3.5.0
 # DESCRIPTION: Main slideshow loop for ESP32-S3-PhotoPainter.
 #   Flow: check WiFi → check server → /api/update → /api/daily-config →
 #         /api/daily-zip → /api/refresh → render → sleep
@@ -149,6 +149,14 @@ def get_bat_pct():
         return None
 
 def go_to_sleep(seconds):
+    if sd_cfg.get('debug'):
+        print('DEBUG mode — using light sleep (time.sleep + reset) for', seconds, 's')
+        try:
+            time.sleep(seconds)
+        except Exception:
+            pass
+        machine.reset()
+        return
     try:
         from axp import AXP2101
         axp = AXP2101()
@@ -232,8 +240,33 @@ def render_and_sleep(img_path, orientation, sleep_interval):
         description  = img_cfg.get('description', '')
 
         apply_battery_square(buf, bat_pct)
-        fw_suffix = sd_cfg.get('update_version', '') if sd_cfg.get('show_fw_version') else None
-        apply_caption_overlay(buf, img_path, caption_mode, description, 'portrait' in orientation, bat_pct, fw_suffix=fw_suffix)
+        apply_caption_overlay(buf, img_path, caption_mode, description, 'portrait' in orientation, bat_pct)
+
+        if sd_cfg.get('debug'):
+            orient_upper = orientation.upper()
+            flip_str = ''
+            if sd_cfg.get('landscape_flipped') or sd_cfg.get('flip_l'):
+                flip_str += ' L-FLIP'
+            if sd_cfg.get('portrait_flipped') or sd_cfg.get('flip_p'):
+                flip_str += ' P-FLIP'
+            checkin_str = 'CHECKIN:?'
+            try:
+                last_ci = sd_cfg.get('last_checkin')
+                if last_ci:
+                    mins = int((time.time() - last_ci) / 60)
+                    checkin_str = 'CHECKIN:{}M AGO'.format(mins)
+            except Exception:
+                pass
+            b_val = bat_pct if bat_pct is not None else 100
+            debug_lines = [
+                'MAC:' + mac_str,
+                'FW:' + (sd_cfg.get('update_version') or 'unknown'),
+                checkin_str,
+                'BATT:{}%'.format(b_val),
+                orient_upper + (flip_str or ''),
+                'IMG:' + base_name,
+            ]
+            apply_debug_overlay(buf, debug_lines)
 
         tmp_path = '/tmp_render.bin'
         with open(tmp_path, 'wb') as f:
@@ -743,7 +776,6 @@ def run_offline_fallback():
             '',
             'TO ADD PICS VISIT:',
             server_host[:44],
-            'Firmware:' + (sd_cfg.get('update_version', '') or 'unknown'),
         ], orient)
     except Exception as e:
         print('Offline screen draw failed:', e)
@@ -786,8 +818,9 @@ def run_connected_sequence():
         if changed:
             save_wifi_config(wifi_cfg)
             print('Flip flags updated from server.')
-        if 'show_fw_version' in dcfg:
-            sd_cfg['show_fw_version'] = bool(dcfg['show_fw_version'])
+        if 'debug' in dcfg:
+            sd_cfg['debug'] = bool(dcfg['debug'])
+        sd_cfg['last_checkin'] = time.time()
         merged = merge_sd_config(sd_cfg, dcfg)
         save_sd_config(merged)
         sd_cfg.update(merged)
