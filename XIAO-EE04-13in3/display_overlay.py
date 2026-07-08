@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 1.3.0
+# FILE VERSION: 1.4.0
 # DESCRIPTION: Display overlay routines for 13.3" Spectra 6 (1200×1600 native).
 #   Adapted from PhotoPainter display_overlay.py — same logic, different canvas size.
 #   EPD_WIDTH=1200, EPD_HEIGHT=1600 (physical panel, portrait native orientation).
@@ -216,6 +216,15 @@ def apply_caption_overlay(buf, filename, mode, description, is_portrait, battery
                 y = EPD_HEIGHT - 12 - (len(lines) - 1 - i) * 10
                 _render_outlined_text_line(buf, line, y, scale=1)
             _render_outlined_text_line(buf, title, EPD_HEIGHT - 12 - len(lines) * 10, scale=1)
+
+def apply_status_overlay(buf, text, width=EPD_WIDTH):
+    """Draw one outlined status line at the top-left (x=4, y=8).
+    Truncated to 196 chars (1200px / 6px per char = 200; leave margin).
+    Call after apply_battery_square when fail_reason is set."""
+    if not text:
+        return
+    text = str(text)[:196].upper()
+    _render_outlined_text_line_at(buf, text, 4, 8, scale=1, width=width)
 
 def apply_debug_overlay(buf, lines):
     """Render a small block of right-aligned debug lines in the upper-right corner.

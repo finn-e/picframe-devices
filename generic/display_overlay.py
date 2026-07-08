@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 2.4.0
+# FILE VERSION: 2.5.0
 # DESCRIPTION: Display overlay routines: battery indicator square and
 #              critical battery banner.
 # ==========================================
@@ -246,6 +246,15 @@ def apply_caption_overlay(buf, filename, mode, description, is_portrait, battery
                 _render_outlined_text_line(buf, line, y, scale=1)
             title_y = 480 - 12 - shift - len(lines) * 10
             _render_outlined_text_line(buf, title, title_y, scale=1)
+
+def apply_status_overlay(buf, text, width=800):
+    """Draw one outlined status line at the top-left (x=4, y=8).
+    Truncated to 78 chars so it fits within 800px at 6px/char.
+    Call after apply_battery_square when fail_reason is set."""
+    if not text:
+        return
+    text = str(text)[:78].upper()
+    _render_outlined_text_line_at(buf, text, 4, 8, scale=1, width=width)
 
 def apply_debug_overlay(buf, lines):
     """Render a small block of right-aligned debug lines in the upper-right corner.

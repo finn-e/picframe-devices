@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 3.6.0
+# FILE VERSION: 3.7.0
 # DESCRIPTION: Main slideshow loop for ESP32-S3-PhotoPainter.
 #   Flow: check WiFi → check server → /api/update → /api/daily-config →
 #         /api/daily-zip → /api/refresh → render → sleep
@@ -122,6 +122,11 @@ sd_cfg   = load_sd_config()
 HW_PROFILE = 'Waveshare-PhotoPainter-7in3'
 RESOLUTION  = '800x480'
 
+# ── Failure reason ────────────────────────────────────────────────────────────
+# Set at every failure branch so run_offline_fallback can display WHY we are
+# offline.  Resets naturally each boot cycle.
+fail_reason = ''
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def sd_mounted():
     try: os.stat('/sd'); return True
@@ -211,6 +216,7 @@ def resolve_image_path(basename):
 
 # ── Display ───────────────────────────────────────────────────────────────────
 def render_and_sleep(img_path, orientation, sleep_interval):
+    global fail_reason
     try:
         from axp import AXP2101
         AXP2101().init()
@@ -241,6 +247,9 @@ def render_and_sleep(img_path, orientation, sleep_interval):
 
         apply_battery_square(buf, bat_pct)
         apply_caption_overlay(buf, img_path, caption_mode, description, 'portrait' in orientation, bat_pct)
+        if fail_reason:
+            from display_overlay import apply_status_overlay
+            apply_status_overlay(buf, fail_reason)
 
         if sd_cfg.get('debug'):
             orient_upper = orientation.upper()
@@ -280,6 +289,7 @@ def render_and_sleep(img_path, orientation, sleep_interval):
         print('Display updated.')
     except Exception as e:
         print('Render failed:', e)
+        fail_reason = ('RENDER FAILED: ' + str(e))[:78]
     go_to_sleep(sleep_interval)
 
 def _draw_message_screen(lines, orientation='landscape'):
@@ -771,18 +781,22 @@ def run_offline_fallback():
         for prefix in ('https://', 'http://'):
             if server_host.startswith(prefix):
                 server_host = server_host[len(prefix):]
+        reason_lines = []
+        if fail_reason:
+            reason_lines = ['', 'REASON:', fail_reason[:76]]
         _draw_message_screen([
             'NO IMAGES CACHED',
             '',
             'TO ADD PICS VISIT:',
             server_host[:44],
-        ], orient)
+        ] + reason_lines, orient)
     except Exception as e:
         print('Offline screen draw failed:', e)
     go_to_sleep(sleep_int)
 
 # ── Connected sequence ────────────────────────────────────────────────────────
 def run_connected_sequence():
+    global fail_reason
     from api import sync_ntp, call_update, call_daily_config, call_daily_zip, call_refresh
     from update import download_and_apply_update
 
@@ -811,6 +825,7 @@ def run_connected_sequence():
                 hard_reboot()
     except Exception as e:
         print('/api/update failed:', e)
+        fail_reason = ('UPDATE CHECK FAILED: ' + str(e))[:78]
         run_offline_fallback(); return
 
     # /api/daily-config
@@ -834,6 +849,11 @@ def run_connected_sequence():
         sd_cfg.update(merged)
     except Exception as e:
         print('/api/daily-config failed:', e)
+        es = str(e)
+        if '403' in es:
+            fail_reason = 'CONFIG HTTP 403 - TOKEN REJECTED?'
+        else:
+            fail_reason = ('CONFIG FAILED: ' + es)[:78]
         run_offline_fallback(); return
 
     # /api/daily-zip
@@ -851,6 +871,7 @@ def run_connected_sequence():
             save_sd_config(sd_cfg)
     except Exception as e:
         print('/api/daily-zip failed:', e)
+        fail_reason = ('ZIP FAILED: ' + str(e))[:78]
         run_offline_fallback(); return
 
     # /api/refresh
@@ -863,6 +884,7 @@ def run_connected_sequence():
         save_sd_config(sd_cfg)
     except Exception as e:
         print('/api/refresh failed:', e)
+        fail_reason = ('REFRESH FAILED: ' + str(e))[:78]
         run_offline_fallback(); return
 
     # Render
@@ -873,10 +895,12 @@ def run_connected_sequence():
             os.stat(img_path)
         except OSError:
             print('Image not on SD:', img_path)
+            fail_reason = 'IMAGE FILE MISSING ON SD'
             run_offline_fallback(); return
         render_and_sleep(img_path, orient, sleep_int)
     else:
         print('No images — sleeping.')
+        fail_reason = 'PLAYLIST EMPTY'
         go_to_sleep(sd_cfg.get('sleep_interval', 900))
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -904,6 +928,7 @@ if not ssid:
 
 elif not wlan.isconnected():
     print('WiFi not connected — offline fallback.')
+    fail_reason = 'WIFI FAILED: ' + wifi_cfg.get('ssid', 'NO SSID')
     run_offline_fallback()
 
 else:
@@ -922,7 +947,10 @@ else:
             reachable = True
     except Exception as e:
         print('Server unreachable:', e)
+        fail_reason = ('SERVER UNREACHABLE: ' + str(e))[:78]
 
+    if auth_failed and not fail_reason:
+        fail_reason = 'AUTH FAILED: INVALID USERNAME/PASSWORD'
     if not reachable or auth_failed:
         ip = wlan.ifconfig()[0]
         hostname = 'picframe-' + mac_str.replace(':', '')[-8:].lower()
