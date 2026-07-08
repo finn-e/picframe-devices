@@ -1,7 +1,7 @@
 # ==========================================
-# FILE VERSION: 2.1.0
-# DESCRIPTION: Display overlay routines: battery indicator square,
-#              PicFrames branding text, and critical battery banner.
+# FILE VERSION: 2.2.0
+# DESCRIPTION: Display overlay routines: battery indicator square and
+#              critical battery banner.
 # ==========================================
 
 COL_BLACK  = 0
@@ -145,30 +145,34 @@ def _render_outlined_text_line_portrait(buf, text, vy, scale=1, vx_center=None, 
                                                         vy + ri*scale + sy + oy, color, width)
             vx_off += (char_w + spacing) * scale
 
+CRITICAL_BATTERY_PCT = 20
+BANNER_H = 14
+BANNER_Y = 480 - BANNER_H
+
 def apply_battery_square(buf, battery_pct):
-    """Renders a solid colored square 4px from bottom-right."""
+    """Renders a 6x6 square 4px from bottom-right: green 60-100%, yellow 40-60%, red 20-40%.
+    Below 20% renders a red banner instead and returns False so callers can shift content up."""
     if battery_pct is None:
         battery_pct = 100
-    if battery_pct >= 80:
-        color = COL_GREEN
-    elif battery_pct >= 60:
-        color = COL_YELLOW
-    elif battery_pct >= 20:
-        color = COL_RED
-    else:
+    if battery_pct < CRITICAL_BATTERY_PCT:
         _apply_critical_battery_banner(buf)
-        return
+        return False
+    if battery_pct >= 60:
+        color = COL_GREEN
+    elif battery_pct >= 40:
+        color = COL_YELLOW
+    else:
+        color = COL_RED
     for dy in range(BAT_SQ_SIZE):
         for dx in range(BAT_SQ_SIZE):
             _set_pixel(buf, BAT_SQ_X + dx, BAT_SQ_Y + dy, color)
+    return True
 
 def _apply_critical_battery_banner(buf):
-    BANNER_H = 14
-    BANNER_Y = 480 - BANNER_H
     for y in range(BANNER_Y, 480):
         for x in range(800):
             _set_pixel(buf, x, y, COL_RED)
-    msg = 'LOW BATTERY: PLEASE PLUG INTO POWER'
+    msg = 'LOW POWER: REFRESH DISABLED. MANUALLY SKIP IMAGES OR PLUG IN.'
     _render_text_line(buf, msg, BANNER_Y + (BANNER_H - 7) // 2, scale=1, color=COL_WHITE)
 
 
@@ -191,11 +195,15 @@ def _wrap_text(text, max_chars=76):
         lines.append(' '.join(curr_line))
     return lines
 
-def apply_caption_overlay(buf, filename, mode, description, is_portrait):
-    """Paints caption (None, Title, Details, Verbose) centered at the bottom of the canvas."""
+def apply_caption_overlay(buf, filename, mode, description, is_portrait, battery_pct=None):
+    """Paints caption (None, Title, Details, Verbose) centered at the bottom of the canvas.
+    Shifts text up by BANNER_H when battery is critical so it clears the banner."""
     if not mode or mode == 'none':
         return
-        
+
+    # Shift everything up when the low-power banner occupies the bottom strip.
+    shift = BANNER_H if (battery_pct is not None and battery_pct < CRITICAL_BATTERY_PCT) else 0
+
     # Extract Title text
     base = filename.split('/')[-1]
     if base.endswith('.bin'):
@@ -205,46 +213,38 @@ def apply_caption_overlay(buf, filename, mode, description, is_portrait):
             base = base[:-len(suffix)]
             break
     title = base.replace('_', ' ').upper().strip()
-    
+
     if mode == 'title':
-        _render_outlined_text_line(buf, title, 480 - 18, scale=1)
+        _render_outlined_text_line(buf, title, 480 - 18 - shift, scale=1)
     elif mode == 'details':
         desc = description.upper().strip()
         if not desc:
-            # Fallback to title only if description is empty
-            _render_outlined_text_line(buf, title, 480 - 18, scale=1)
+            _render_outlined_text_line(buf, title, 480 - 18 - shift, scale=1)
             return
-            
         if not is_portrait:
-            # Landscape: 1 line of description only
-            _render_outlined_text_line(buf, desc, 480 - 18, scale=1)
+            _render_outlined_text_line(buf, desc, 480 - 18 - shift, scale=1)
         else:
-            # Portrait: 1-3 lines of description only
             lines = _wrap_text(desc, max_chars=76)[:3]
             if len(lines) == 1:
-                _render_outlined_text_line(buf, lines[0], 480 - 18, scale=1)
+                _render_outlined_text_line(buf, lines[0], 480 - 18 - shift, scale=1)
             else:
                 for i, line in enumerate(lines):
-                    y = 480 - 12 - (len(lines) - 1 - i) * 10
+                    y = 480 - 12 - shift - (len(lines) - 1 - i) * 10
                     _render_outlined_text_line(buf, line, y, scale=1)
     elif mode == 'title_details':
         desc = description.upper().strip()
         if not desc:
-            # Fallback to title only if description is empty
-            _render_outlined_text_line(buf, title, 480 - 18, scale=1)
+            _render_outlined_text_line(buf, title, 480 - 18 - shift, scale=1)
             return
-            
         if not is_portrait:
-            # Landscape: 1 line of description, title on the line above
-            _render_outlined_text_line(buf, desc, 480 - 12, scale=1)
-            _render_outlined_text_line(buf, title, 480 - 22, scale=1)
+            _render_outlined_text_line(buf, desc, 480 - 12 - shift, scale=1)
+            _render_outlined_text_line(buf, title, 480 - 22 - shift, scale=1)
         else:
-            # Portrait: 1-3 lines of description, title on the line above top desc line
             lines = _wrap_text(desc, max_chars=76)[:3]
             for i, line in enumerate(lines):
-                y = 480 - 12 - (len(lines) - 1 - i) * 10
+                y = 480 - 12 - shift - (len(lines) - 1 - i) * 10
                 _render_outlined_text_line(buf, line, y, scale=1)
-            title_y = 480 - 12 - len(lines) * 10
+            title_y = 480 - 12 - shift - len(lines) * 10
             _render_outlined_text_line(buf, title, title_y, scale=1)
 
 def apply_debug_overlay(buf, version, orient, filename, flipped_l, flipped_p, bat_pct):

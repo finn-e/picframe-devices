@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 1.2.0
+# FILE VERSION: 1.3.0
 # DESCRIPTION: Main slideshow loop for XIAO EE04 + 13.3" Spectra 6 (dual-controller).
 #   Panel: 1200 × 1600 px physical (portrait native).
 #   Image pipeline resolution: EPD_WIDTH=1200, EPD_HEIGHT=1600.
@@ -240,11 +240,11 @@ def render_and_sleep(img_path, orientation, sleep_interval):
                 break
 
         img_cfg      = sd_cfg.get('enabled', {}).get(base_name, {})
-        caption_mode = img_cfg.get('caption_mode', 'none')
+        caption_mode = img_cfg.get('caption_mode', 'title')
         description  = img_cfg.get('description', '')
 
         apply_battery_square(buf, bat_pct)
-        apply_caption_overlay(buf, img_path, caption_mode, description, 'portrait' in orientation)
+        apply_caption_overlay(buf, img_path, caption_mode, description, 'portrait' in orientation, bat_pct)
 
         tmp_path = '/tmp_render.bin'
         with open(tmp_path, 'wb') as f:
@@ -753,7 +753,7 @@ def run_connected_sequence():
         run_offline_fallback(); return
 
     try:
-        result    = call_refresh(server_url, mac_str, token, skip=False, battery=get_bat_pct())
+        result    = call_refresh(server_url, mac_str, token, skip=True, battery=get_bat_pct())
         idx       = result.get('image_index', sd_cfg.get('image_index', 0))
         orient    = result.get('current_orientation', sd_cfg.get('orientation', 'landscape'))
         sleep_int = result.get('sleep_interval', sd_cfg.get('sleep_interval', 900))
