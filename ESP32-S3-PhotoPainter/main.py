@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 3.5.0
+# FILE VERSION: 3.6.0
 # DESCRIPTION: Main slideshow loop for ESP32-S3-PhotoPainter.
 #   Flow: check WiFi → check server → /api/update → /api/daily-config →
 #         /api/daily-zip → /api/refresh → render → sleep
@@ -794,11 +794,19 @@ def run_connected_sequence():
 
     # /api/update
     try:
-        zip_url = call_update(server_url, mac_str, token, HW_PROFILE, update_ver)
+        zip_url = call_update(server_url, mac_str, token, HW_PROFILE, update_ver,
+                              fw_version=update_ver)
         if zip_url:
             print('Update available:', zip_url)
             if download_and_apply_update(zip_url):
                 print('Update applied — rebooting.')
+                try:
+                    parsed_ver = zip_url.split('/')[-2].lstrip('v')
+                    sd_cfg['update_version'] = parsed_ver
+                    save_sd_config(sd_cfg)
+                    print('Persisted update_version:', parsed_ver)
+                except Exception as ve:
+                    print('Failed to persist update_version:', ve)
                 time.sleep_ms(300)
                 hard_reboot()
     except Exception as e:

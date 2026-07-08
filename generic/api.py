@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 2.2.0
+# FILE VERSION: 2.3.0
 # DESCRIPTION: API client for the PicFrames server. Handles all endpoint
 #              communication with auth headers, NTP sync, and fail-soft.
 # ==========================================
@@ -34,15 +34,16 @@ def make_headers(mac, token, fw_version=None):
         h['X-Firmware-Version'] = fw_version
     return h
 
-def call_update(server_url, mac, token, hw_profile, update_version):
+def call_update(server_url, mac, token, hw_profile, update_version, fw_version=None):
     """
     GET /api/update?hw=ESP32-S3-PhotoPainter&version=<update_version>
     Returns: None if current, or GitHub ZIP URL string if update available.
     Raises exception on network failure.
+    fw_version: optional current firmware version to report via X-Firmware-Version header.
     """
     url = server_url + '/api/update'
     params = '?hw=' + hw_profile + '&version=' + (update_version or '')
-    res = requests.get(url + params, headers=make_headers(mac, token), timeout=10)
+    res = requests.get(url + params, headers=make_headers(mac, token, fw_version=fw_version), timeout=10)
     if res.status_code == 200 and res.text:
         body = res.text.strip()
         res.close()

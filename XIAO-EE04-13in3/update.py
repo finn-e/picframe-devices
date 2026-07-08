@@ -1,12 +1,21 @@
 # ==========================================
-# FILE VERSION: 2.0.0
+# FILE VERSION: 2.1.0
 # DESCRIPTION: Software update handler. Downloads GitHub release ZIP,
-#              extracts to /images/, copies ALL .py files to Flash unconditionally
+#              extracts to /staging/, copies ALL .py files to Flash unconditionally
 #              (per-file version gating retired 2026-07-06).
+#              /staging is separate from /images so update files never mix with photos.
 # ==========================================
 import os
 import urequests as requests
 from unzip import extract_zip
+
+STAGING_DIR = '/staging'
+
+def _ensure_staging():
+    try:
+        os.mkdir(STAGING_DIR)
+    except OSError:
+        pass  # already exists
 
 def get_file_version(path):
     try:
@@ -33,23 +42,24 @@ def copy_file(src, dst):
                     break
                 d.write(buf if n == len(buf) else buf[:n])
 
-def clear_images_py_files():
+def clear_staging_py_files():
     try:
-        for filename in os.listdir('/images'):
+        for filename in os.listdir(STAGING_DIR):
             if filename.endswith('.py'):
                 try:
-                    os.remove('/images/' + filename)
+                    os.remove(STAGING_DIR + '/' + filename)
                 except Exception:
                     pass
     except Exception as e:
-        print('Error clearing old .py files from /images:', e)
+        print('Error clearing old .py files from', STAGING_DIR, ':', e)
 
-def download_and_apply_update(zip_url, zip_dest='/images/update.zip'):
+def download_and_apply_update(zip_url, zip_dest=STAGING_DIR + '/update.zip'):
     """
-    Downloads ZIP from zip_url, extracts to /images/, copies every .py file
+    Downloads ZIP from zip_url, extracts to /staging/, copies every .py file
     from the update to Flash unconditionally.
     Returns True if any flash files were updated (soft reset recommended).
     """
+    _ensure_staging()
     print('Downloading update from:', zip_url)
     res = requests.get(zip_url, timeout=30)
     with open(zip_dest, 'wb') as f:
@@ -60,10 +70,10 @@ def download_and_apply_update(zip_url, zip_dest='/images/update.zip'):
                 break
             f.write(chunk if n == len(chunk) else chunk[:n])
     res.close()
-    print('Download complete. Clearing old .py files from /images...')
-    clear_images_py_files()
+    print('Download complete. Clearing old .py files from', STAGING_DIR, '...')
+    clear_staging_py_files()
     print('Extracting...')
-    extract_zip(zip_dest, '/images')
+    extract_zip(zip_dest, STAGING_DIR)
     try:
         os.remove(zip_dest)
     except Exception:
@@ -71,10 +81,10 @@ def download_and_apply_update(zip_url, zip_dest='/images/update.zip'):
     # Old .py files were cleared before extraction, so every .py present
     # came from the update ZIP. Copy them all to Flash.
     flash_updated = False
-    for filename in sorted(os.listdir('/images')):
+    for filename in sorted(os.listdir(STAGING_DIR)):
         if not filename.endswith('.py'):
             continue
-        src_path = '/images/' + filename
+        src_path = STAGING_DIR + '/' + filename
         print('Syncing:', filename, '| version:', get_file_version(src_path))
         copy_file(src_path, '/' + filename)
         flash_updated = True
