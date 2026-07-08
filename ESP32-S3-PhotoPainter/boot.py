@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 2.3.0
+# FILE VERSION: 2.4.0
 # DESCRIPTION: Bootloader — mounts SD, connects WiFi, registers device,
 #              then hands off to main.py. No AP portal here.
 # ==========================================
@@ -167,6 +167,31 @@ else:
             else:
                 err = data.get('error', 'unknown')
                 print('/api/register rejected:', status, err)
+            # Final fallback: re-pair window (server grants token if window open)
+            if status != 200 or 'error' in data:
+                try:
+                    body3 = json.dumps({'mac': mac_str, 'username': username, 'password': '',
+                                        'hw_profile': HW_PROFILE, 'resolution': RESOLUTION})
+                    res3  = urequests.post(
+                        server_url + '/api/register',
+                        data=body3,
+                        headers={'Content-Type': 'application/json'},
+                        timeout=10,
+                    )
+                    status3 = res3.status_code
+                    data3   = json.loads(res3.text)
+                    res3.close()
+                    if status3 == 200 and 'error' not in data3:
+                        new_token = data3.get('token', '')
+                        if new_token:
+                            wifi_cfg['token'] = new_token
+                            save_wifi_config(wifi_cfg)
+                            print('Device token re-issued via re-pair window.')
+                    else:
+                        err3 = data3.get('error', 'unknown')
+                        print('/api/register rejected (re-pair):', status3, err3)
+                except Exception as e3:
+                    print('/api/register re-pair attempt failed:', e3)
         except Exception as e:
             print('/api/register failed (continuing with existing token):', e)
     else:
