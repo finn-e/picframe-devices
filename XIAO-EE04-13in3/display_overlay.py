@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 1.4.0
+# FILE VERSION: 1.5.0
 # DESCRIPTION: Display overlay routines for 13.3" Spectra 6 (1200×1600 native).
 #   Adapted from PhotoPainter display_overlay.py — same logic, different canvas size.
 #   EPD_WIDTH=1200, EPD_HEIGHT=1600 (physical panel, portrait native orientation).
@@ -48,12 +48,26 @@ FONT = {
     '#': (0x14,0x7F,0x14,0x7F,0x14), '@': (0x3E,0x41,0x5D,0x55,0x5E),
 }
 
+_HALF_W     = EPD_WIDTH // 2        # 600
+_HALF_BYTES = EPD_HEIGHT * _HALF_W // 2  # 480 000
+
 def _set_pixel(buf, x, y, color, width=EPD_WIDTH, height=EPD_HEIGHT):
+    """Write one pixel using the split left|right layout expected by display_file:
+    bytes [0, 480000)  → CS_M cols 0-599, row-major 4bpp
+    bytes [480000, 960000) → CS_S cols 600-1199, row-major 4bpp
+    """
     if x < 0 or x >= width or y < 0 or y >= height:
         return
-    idx = (y * width + x) // 2
+    hw = width // 2
+    hb = height * hw // 2
+    if x < hw:
+        idx    = y * (hw // 2) + x // 2
+        nibble = x % 2
+    else:
+        idx    = hb + y * (hw // 2) + (x - hw) // 2
+        nibble = (x - hw) % 2
     b = buf[idx]
-    if x % 2 == 0:
+    if nibble == 0:
         buf[idx] = (b & 0x0F) | (color << 4)
     else:
         buf[idx] = (b & 0xF0) | color
