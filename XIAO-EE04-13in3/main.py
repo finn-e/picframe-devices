@@ -1,5 +1,5 @@
 # ==========================================
-# FILE VERSION: 1.7.0
+# FILE VERSION: 1.8.0
 # DESCRIPTION: Main slideshow loop for XIAO EE04 + 13.3" Spectra 6 (dual-controller).
 #   Panel: 1200 × 1600 px physical (portrait native).
 #   Image pipeline resolution: EPD_WIDTH=1200, EPD_HEIGHT=1600.
@@ -304,16 +304,21 @@ def render_and_sleep(img_path, orientation, sleep_interval):
     go_to_sleep(sleep_interval)
 
 def _draw_message_screen(lines, orientation='landscape'):
-    """Draw text lines on the EPD using a white buffer."""
+    """Draw text lines in the bottom quarter over the logo background."""
     try:
         gc.collect()
-        # White packed as 0x11 for both nibbles
-        buf = bytearray(b'\x11' * EPD_BUF_SIZE)
+        logo_file = '/picframes_logo_l.bin' if 'landscape' in orientation else '/picframes_logo_p.bin'
+        try:
+            with open(logo_file, 'rb') as f:
+                buf = bytearray(f.read())
+        except Exception:
+            buf = bytearray(b'\x11' * EPD_BUF_SIZE)
         from display_overlay import _render_text_line, apply_battery_square
         scale  = 2
         line_h = 8 * scale + 6
         total_h = len(lines) * line_h
-        y_start = (EPD_HEIGHT - total_h) // 2
+        text_zone_top = EPD_HEIGHT * 3 // 4
+        y_start = text_zone_top + (EPD_HEIGHT // 4 - total_h) // 2
         for i, line in enumerate(lines):
             _render_text_line(buf, line, y_start + i * line_h, scale=scale)
         apply_battery_square(buf, get_bat_pct())
