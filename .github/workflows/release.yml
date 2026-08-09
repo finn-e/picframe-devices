@@ -9,12 +9,53 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  build-c-firmware:
     runs-on: ubuntu-latest
+    container: espressif/idf:release-v5.3
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Build PhotoPainter C Firmware
+        run: |
+          cd ESP32-S3-PhotoPainter/c-firmware
+          idf.py set-target esp32s3
+          idf.py build
+
+      - name: Merge Binaries
+        run: |
+          cd ESP32-S3-PhotoPainter/c-firmware
+          esptool.py --chip esp32s3 merge_bin \
+            -o build/picframe_photopainter_merged.bin \
+            --flash_mode dio --flash_size 16MB --flash_freq 80m \
+            0x0 build/bootloader/bootloader.bin \
+            0x8000 build/partition_table/partition-table.bin \
+            0x10000 build/picframe_photopainter.bin
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: c-firmware-binaries
+          path: |
+            ESP32-S3-PhotoPainter/c-firmware/build/bootloader/bootloader.bin
+            ESP32-S3-PhotoPainter/c-firmware/build/partition_table/partition-table.bin
+            ESP32-S3-PhotoPainter/c-firmware/build/picframe_photopainter.bin
+            ESP32-S3-PhotoPainter/c-firmware/build/picframe_photopainter_merged.bin
+
+  release:
+    runs-on: ubuntu-latest
+    needs: build-c-firmware
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download C Firmware Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: c-firmware-binaries
+          path: dist-c/
 
       - name: Get Next Version
         id: semver
@@ -29,16 +70,21 @@ jobs:
       - name: Build per-board firmware ZIPs (generic/ + board dir, board wins)
         run: |
           TAG=${{ steps.semver.outputs.version }}
+          # Create python packages (legacy)
           for BOARD in ESP32-S3-PhotoPainter XIAO-EE04-7in3 XIAO-EE04-13in3; do
             mkdir -p "dist/$BOARD"
             cp generic/*.py "dist/$BOARD/"
             cp "$BOARD"/*.py "dist/$BOARD/"
             cp "$BOARD"/*.bin "dist/$BOARD/" 2>/dev/null || true
-            # Flat zip layout: device update.py extracts to its storage root
-            # and syncs top-level files by name (no directory prefix).
             (cd "dist/$BOARD" && zip -r "../$BOARD-$TAG.zip" .)
             (cd "dist/$BOARD" && zip -r "../$BOARD.zip" .)
           done
+          
+          # Copy C firmware binaries to dist
+          cp dist-c/picframe_photopainter_merged.bin dist/Waveshare-PhotoPainter-7in3-C-merged.bin
+          cp dist-c/picframe_photopainter.bin dist/Waveshare-PhotoPainter-7in3-C.bin
+          (cd dist-c && zip -r "../dist/Waveshare-PhotoPainter-7in3-C-Firmware-$TAG.zip" .)
+          (cd dist-c && zip -r "../dist/Waveshare-PhotoPainter-7in3-C-Firmware.zip" .)
 
       - name: Generate Changelog
         id: changelog
@@ -63,6 +109,8 @@ jobs:
             dist/XIAO-EE04-7in3.zip
             dist/XIAO-EE04-13in3-*.zip
             dist/XIAO-EE04-13in3.zip
+            dist/Waveshare-PhotoPainter-7in3-C-*.bin
+            dist/Waveshare-PhotoPainter-7in3-C-*.zip
           draft: false
           prerelease: false
           make_latest: true
@@ -88,6 +136,8 @@ jobs:
             dist/ESP32-S3-PhotoPainter.zip
             dist/XIAO-EE04-7in3.zip
             dist/XIAO-EE04-13in3.zip
+            dist/Waveshare-PhotoPainter-7in3-C-merged.bin
+            dist/Waveshare-PhotoPainter-7in3-C-Firmware.zip
           make_latest: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
