@@ -269,7 +269,7 @@ static esp_err_t root_get_handler(httpd_req_t *req) {
              "<title>PicFrame Setup</title><style>"
              "*{{box-sizing:border-box;margin:0;padding:0}}"
              "body{{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}}"
-             ".card{{background:rgba(30,41,59,.8);border:1px solid rgba(255,255,255,.08);padding:32px;border-radius:20px;width:100%;max-width:440px}}"
+             ".card{{background:rgba(30,41,59,.8);border:1px solid rgba(255,255,255,.08);padding:32px;border-radius:20px;width:100%%;max-width:440px}}"
              "h2{{font-weight:700;font-size:1.7rem;margin-bottom:6px;background:linear-gradient(135deg,hsl(190,100%%,55%%),hsl(260,90%%,65%%));-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-align:center}}"
              ".sub{{text-align:center;color:#64748b;font-size:.85rem;margin-bottom:20px}}"
              ".err{{color:hsl(0,85%%,65%%);background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.2);padding:10px;border-radius:8px;margin-bottom:14px;font-size:.82rem;text-align:center}}"

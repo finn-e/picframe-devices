@@ -3,8 +3,8 @@
 
 #include <stdbool.h>
 
-#define MAX_SSID_LEN      64
-#define MAX_PASS_LEN      64
+#define APP_MAX_SSID_LEN  64
+#define APP_MAX_PASS_LEN  64
 #define MAX_URL_LEN       128
 #define MAX_USER_LEN      64
 #define MAX_TOKEN_LEN     128
@@ -12,8 +12,8 @@
 #define MAX_ZIP_VER_LEN   64
 
 typedef struct {
-    char ssid[MAX_SSID_LEN];
-    char password[MAX_PASS_LEN];
+    char ssid[APP_MAX_SSID_LEN];
+    char password[APP_MAX_PASS_LEN];
     char server_url[MAX_URL_LEN];
     char username[MAX_USER_LEN];
     char token[MAX_TOKEN_LEN];
