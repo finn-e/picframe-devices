@@ -22,7 +22,7 @@ bool unzip_file(const char *zip_path, const char *dest_dir) {
 
     for (mz_uint i = 0; i < num_files; i++) {
         mz_zip_archive_file_stat file_stat;
-        if (!mz_zip_reader_get_file_stat(&zip_archive, i, &file_stat)) {
+        if (!mz_zip_reader_file_stat(&zip_archive, i, &file_stat)) {
             ESP_LOGE(TAG, "Failed to get file stat for index %u", (unsigned int)i);
             continue;
         }
