@@ -270,13 +270,13 @@ static esp_err_t root_get_handler(httpd_req_t *req) {
              "*{{box-sizing:border-box;margin:0;padding:0}}"
              "body{{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}}"
              ".card{{background:rgba(30,41,59,.8);border:1px solid rgba(255,255,255,.08);padding:32px;border-radius:20px;width:100%;max-width:440px}}"
-             "h2{{font-weight:700;font-size:1.7rem;margin-bottom:6px;background:linear-gradient(135deg,hsl(190,100%,55%),hsl(260,90%,65%));-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-align:center}}"
+             "h2{{font-weight:700;font-size:1.7rem;margin-bottom:6px;background:linear-gradient(135deg,hsl(190,100%%,55%%),hsl(260,90%%,65%%));-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-align:center}}"
              ".sub{{text-align:center;color:#64748b;font-size:.85rem;margin-bottom:20px}}"
-             ".err{{color:hsl(0,85%,65%);background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.2);padding:10px;border-radius:8px;margin-bottom:14px;font-size:.82rem;text-align:center}}"
+             ".err{{color:hsl(0,85%%,65%%);background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.2);padding:10px;border-radius:8px;margin-bottom:14px;font-size:.82rem;text-align:center}}"
              "label{{display:block;font-size:.82rem;color:#94a3b8;margin-bottom:4px;font-weight:500}}"
              ".ig{{margin-bottom:14px}}"
-             "input[type=text],input[type=password]{{width:100%;padding:10px 12px;background:rgba(15,23,42,.6);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#fff;font-size:.92rem}}"
-             "input[type=submit]{{width:100%;padding:12px;border:none;border-radius:9px;background:linear-gradient(135deg,hsl(190,100%,45%),hsl(260,90%,55%));color:#fff;font-size:.97rem;font-weight:600;cursor:pointer;margin-top:4px}}"
+             "input[type=text],input[type=password]{{width:100%%;padding:10px 12px;background:rgba(15,23,42,.6);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#fff;font-size:.92rem}}"
+             "input[type=submit]{{width:100%%;padding:12px;border:none;border-radius:9px;background:linear-gradient(135deg,hsl(190,100%%,45%%),hsl(260,90%%,55%%));color:#fff;font-size:.97rem;font-weight:600;cursor:pointer;margin-top:4px}}"
              ".notice{{background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.3);border-radius:10px;padding:12px;font-size:.82rem;margin-bottom:20px;color:#a5b4fc;line-height:1.5}}"
              "</style></head><body><div class=\"card\">"
              "<h2>PicFrame Setup</h2><div class=\"sub\">Device ID: %s &nbsp;|&nbsp; MAC: %s</div>"
@@ -292,7 +292,7 @@ static esp_err_t root_get_handler(httpd_req_t *req) {
              dev_id, device_mac_str, err_msg,
              cfg.ssid, cfg.password, cfg.server_url, cfg.username);
 
-    httpd_resp_send(req, html, HTTPD_RESP_USE_ASSERTION);
+    httpd_resp_send(req, html, HTTPD_RESP_USE_STRLEN);
     free(html);
     return ESP_OK;
 }
@@ -339,7 +339,7 @@ static esp_err_t save_post_handler(httpd_req_t *req) {
     ESP_LOGI(TAG, "WiFi config saved. Rebooting...");
 
     const char *resp = "<html><body><h2>Saved! Rebooting...</h2></body></html>";
-    httpd_resp_send(req, resp, HTTPD_RESP_USE_ASSERTION);
+    httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN);
 
     vTaskDelay(pdMS_TO_TICKS(1000));
     axp2101_reboot();
