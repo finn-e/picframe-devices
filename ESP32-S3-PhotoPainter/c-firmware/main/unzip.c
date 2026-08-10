@@ -18,12 +18,12 @@ bool unzip_file(const char *zip_path, const char *dest_dir) {
     }
 
     mz_uint num_files = mz_zip_reader_get_num_files(&zip_archive);
-    ESP_LOGI(TAG, "ZIP archive contains %u files", num_files);
+    ESP_LOGI(TAG, "ZIP archive contains %u files", (unsigned int)num_files);
 
     for (mz_uint i = 0; i < num_files; i++) {
         mz_zip_archive_file_stat file_stat;
         if (!mz_zip_reader_get_file_stat(&zip_archive, i, &file_stat)) {
-            ESP_LOGE(TAG, "Failed to get file stat for index %u", i);
+            ESP_LOGE(TAG, "Failed to get file stat for index %u", (unsigned int)i);
             continue;
         }
 
@@ -32,7 +32,7 @@ bool unzip_file(const char *zip_path, const char *dest_dir) {
             continue;
         }
 
-        char dest_file_path[256];
+        char dest_file_path[1024];
         snprintf(dest_file_path, sizeof(dest_file_path), "%s/%s", dest_dir, file_stat.m_filename);
 
         ESP_LOGI(TAG, "Extracting %s to %s", file_stat.m_filename, dest_file_path);
