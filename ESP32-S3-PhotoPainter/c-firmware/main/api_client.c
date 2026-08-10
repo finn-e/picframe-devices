@@ -80,7 +80,7 @@ static bool perform_request(esp_http_client_method_t method, const char *path, c
         .url = url,
         .method = method,
         .event_handler = _http_event_handler,
-        .user_ctx = response_buf,
+        .user_data = response_buf,
         .keep_alive_enable = true,
         .timeout_ms = 10000,
         .transport_type = HTTP_TRANSPORT_OVER_SSL,
@@ -240,7 +240,7 @@ bool api_download_daily_zip(const char *version, const char *dest_path) {
         return false;
     }
 
-    int content_length = esp_http_client_fetch_headers(dl_client);
+    esp_http_client_fetch_headers(dl_client);
     int status_code = esp_http_client_get_status_code(dl_client);
 
     if (status_code == 304 || status_code == 204) {
@@ -340,19 +340,19 @@ bool api_change_orientation(const char *orientation) {
 
 bool api_sync_ntp(void) {
     ESP_LOGI(TAG, "Initializing SNTP...");
-    sntp_setoperatingmode(SNTP_OPMODE_POLL);
-    sntp_setservername(0, "pool.ntp.org");
-    sntp_setservername(1, "time.google.com");
-    sntp_init();
+    esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
+    esp_sntp_setservername(0, "pool.ntp.org");
+    esp_sntp_setservername(1, "time.google.com");
+    esp_sntp_init();
 
     int retry = 0;
     const int retry_count = 10;
-    while (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && ++retry < retry_count) {
+    while (esp_sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && ++retry < retry_count) {
         ESP_LOGI(TAG, "Waiting for system time to be set... (%d/%d)", retry, retry_count);
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
     
-    if (sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED) {
+    if (esp_sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED) {
         time_t now;
         struct tm timeinfo;
         time(&now);

@@ -30,13 +30,6 @@ static void axp_set_bit(uint8_t reg, uint8_t bit) {
     }
 }
 
-static void axp_clr_bit(uint8_t reg, uint8_t bit) {
-    uint8_t val = 0;
-    if (axp_read_reg(reg, &val) == ESP_OK) {
-        axp_write_reg(reg, val & ~(1 << bit));
-    }
-}
-
 bool axp2101_init(void) {
     if (!i2c_initialized) {
         i2c_config_t conf = {
