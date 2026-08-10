@@ -92,7 +92,7 @@ static void go_to_sleep(int seconds) {
     // BOOT (GPIO0) -> ext0 (active low)
     esp_sleep_enable_ext0_wakeup(BOOT_BUTTON_PIN, 0);
     // KEY (GPIO4) -> ext1 (active low)
-    esp_sleep_enable_ext1_wakeup(1ULL << KEY_BUTTON_PIN, ESP_EXT1_WAKEUP_ALL_LOW);
+    esp_sleep_enable_ext1_wakeup(1ULL << KEY_BUTTON_PIN, ESP_EXT1_WAKEUP_ANY_LOW);
 
     esp_sleep_enable_timer_wakeup((uint64_t)seconds * 1000000ULL);
     ESP_LOGI(TAG, "Entering deep sleep now");
@@ -115,8 +115,6 @@ static void draw_message_screen(const char **lines, int count, const char *orien
     }
 
     // Paint lines onto the buffer
-    int line_h = 13;
-    int total_h = count * line_h;
     
     if (strstr(orientation, "portrait") != NULL) {
         for (int i = 0; i < count; i++) {
