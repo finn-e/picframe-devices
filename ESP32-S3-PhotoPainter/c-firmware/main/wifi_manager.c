@@ -247,7 +247,7 @@ static esp_err_t root_get_handler(httpd_req_t *req) {
     }
 
     // Load wifi config for default display values
-    wifi_config_t cfg;
+    app_wifi_config_t cfg;
     config_load_wifi(&cfg);
 
     char dev_id[16];
@@ -316,7 +316,7 @@ static esp_err_t save_post_handler(httpd_req_t *req) {
     buf[ret] = '\0';
 
     // Parse form parameters: ssid, wifi_pass, server_url, username, token
-    wifi_config_t cfg;
+    app_wifi_config_t cfg;
     config_load_wifi(&cfg);
 
     char *token = strtok(buf, "&");

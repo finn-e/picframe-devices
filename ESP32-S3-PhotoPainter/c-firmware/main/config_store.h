@@ -19,7 +19,7 @@ typedef struct {
     char token[MAX_TOKEN_LEN];
     bool landscape_flipped;
     bool portrait_flipped;
-} wifi_config_t;
+} app_wifi_config_t;
 
 typedef struct {
     char orientation[MAX_ORIENT_LEN];
@@ -30,8 +30,8 @@ typedef struct {
 } sd_config_t;
 
 bool config_init_fs(void); // Mount SPIFFS and SD card
-bool config_load_wifi(wifi_config_t *cfg);
-bool config_save_wifi(const wifi_config_t *cfg);
+bool config_load_wifi(app_wifi_config_t *cfg);
+bool config_save_wifi(const app_wifi_config_t *cfg);
 bool config_load_sd(sd_config_t *cfg);
 bool config_save_sd(const sd_config_t *cfg);
 

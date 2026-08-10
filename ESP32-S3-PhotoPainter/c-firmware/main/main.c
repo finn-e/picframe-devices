@@ -28,7 +28,7 @@ static const char *TAG = "Main";
 
 #define FIRMWARE_VERSION  "1.8.0-c"
 
-static wifi_config_t wifi_cfg;
+static app_wifi_config_t wifi_cfg;
 static sd_config_t sd_cfg;
 static bool wifi_ok = false;
 static char mac_str[32] = {0};

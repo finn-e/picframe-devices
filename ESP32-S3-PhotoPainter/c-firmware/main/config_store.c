@@ -88,8 +88,8 @@ static char *read_file_to_buf(const char *path) {
     return buf;
 }
 
-bool config_load_wifi(wifi_config_t *cfg) {
-    memset(cfg, 0, sizeof(wifi_config_t));
+bool config_load_wifi(app_wifi_config_t *cfg) {
+    memset(cfg, 0, sizeof(app_wifi_config_t));
     strcpy(cfg->server_url, "https://picframes.treee.house");
 
     if (!spiffs_mounted) return false;
@@ -128,7 +128,7 @@ bool config_load_wifi(wifi_config_t *cfg) {
     return true;
 }
 
-bool config_save_wifi(const wifi_config_t *cfg) {
+bool config_save_wifi(const app_wifi_config_t *cfg) {
     if (!spiffs_mounted) return false;
     cJSON *json = cJSON_CreateObject();
     if (!json) return false;
