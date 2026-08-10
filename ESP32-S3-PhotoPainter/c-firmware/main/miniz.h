@@ -112,7 +112,10 @@
 */
 #pragma once
 
-#include "miniz_export.h"
+// #include "miniz_export.h"
+#ifndef MINIZ_EXPORT
+#define MINIZ_EXPORT
+#endif
 
 #if defined(__STRICT_ANSI__)
 #define MZ_FORCEINLINE
