@@ -60,7 +60,7 @@ static void epd_wait_busy(uint32_t timeout_ms) {
         epd_delay_ms(10);
         elapsed += 10;
         if (elapsed > timeout_ms) {
-            ESP_LOGE(TAG, "EPD busy timeout (%d s)!", timeout_ms / 1000);
+            ESP_LOGE(TAG, "EPD busy timeout (%d s)!", (int)(timeout_ms / 1000));
             epd_has_timeout = true;
             break;
         }
