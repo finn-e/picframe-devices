@@ -19,14 +19,14 @@ jobs:
 
       - name: Build PhotoPainter C Firmware
         run: |
-          . /opt/espressif/entrypoint.sh
+          . /opt/esp/entrypoint.sh
           cd ESP32-S3-PhotoPainter/c-firmware
           idf.py set-target esp32s3
           idf.py build
 
       - name: Merge Binaries
         run: |
-          . /opt/espressif/entrypoint.sh
+          . /opt/esp/entrypoint.sh
           cd ESP32-S3-PhotoPainter/c-firmware
           esptool.py --chip esp32s3 merge_bin \
             -o build/picframe_photopainter_merged.bin \
