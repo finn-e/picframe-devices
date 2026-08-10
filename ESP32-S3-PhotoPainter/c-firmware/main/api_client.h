@@ -2,6 +2,7 @@
 #define API_CLIENT_H
 
 #include <stdbool.h>
+#include <stddef.h>
 
 typedef struct {
     int image_index;

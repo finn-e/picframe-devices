@@ -48,9 +48,9 @@ static esp_err_t _http_event_handler(esp_http_client_event_t *evt) {
             break;
         case HTTP_EVENT_ON_DATA:
             ESP_LOGD(TAG, "HTTP_EVENT_ON_DATA, len=%d", evt->data_len);
-            if (evt->user_ctx) {
-                // If user_ctx is passed, append data to it
-                char *buf = (char *)evt->user_ctx;
+            if (evt->user_data) {
+                // If user_data is passed, append data to it
+                char *buf = (char *)evt->user_data;
                 size_t current_len = strlen(buf);
                 if (current_len + evt->data_len < 8192) {
                     memcpy(buf + current_len, evt->data, evt->data_len);
