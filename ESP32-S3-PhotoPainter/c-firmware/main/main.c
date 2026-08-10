@@ -18,6 +18,7 @@
 #include "epd_7in3f.h"
 #include "display_overlay.h"
 #include "unzip.h"
+#include "cJSON.h"
 
 static const char *TAG = "Main";
 
@@ -118,13 +119,11 @@ static void draw_message_screen(const char **lines, int count, const char *orien
     int total_h = count * line_h;
     
     if (strstr(orientation, "portrait") != NULL) {
-        int y_start = 600 + (200 - total_h) / 2;
         for (int i = 0; i < count; i++) {
             // Draw visual portrait text
             display_overlay_caption(buf, logo_path, "details", lines[i], true, 100);
         }
     } else {
-        int y_start = 360 + (120 - total_h) / 2;
         for (int i = 0; i < count; i++) {
             display_overlay_caption(buf, logo_path, "details", lines[i], false, 100);
         }
