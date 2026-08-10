@@ -6,4 +6,4 @@ idf_component_register(SRCS "main.c"
                             "config_store.c"
                             "unzip.c"
                        INCLUDE_DIRS "."
-                       PRIV_REQUIRES fatfs spiffs json esp_http_client esp_wifi nvs_flash lwip app_update driver)
+                       PRIV_REQUIRES fatfs spiffs json esp_http_client esp_wifi nvs_flash lwip app_update driver esp_https_ota esp_http_server)
